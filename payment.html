@@ -1172,6 +1172,9 @@ function resetSubmitBtn(){
 }
 
 // ── After Stripe redirects back with ?status=success ─────────────────────────
+// ── Legacy Stripe redirect path (?status=success) ────────────────────────────
+// This path fires if Stripe redirects back with ?status=success (older flow).
+// Uses the same create-client edge function to ensure RLS is bypassed.
 (function(){
   var params = new URLSearchParams(window.location.search);
   if(params.get('status') !== 'success') return;
@@ -1183,147 +1186,117 @@ function resetSubmitBtn(){
   var ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
   var SB_URL = 'https://wfyzvmfvlukawidowuym.supabase.co';
 
-  // Create Supabase auth account + clients row
-  fetch(SB_URL+'/auth/v1/signup',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
-    body:JSON.stringify({
-      email:   pending.email,
-      password:pending.password,
-      options: {data:{full_name:pending.firstName+' '+(pending.lastName||''),company:pending.company}}
+  fetch(SB_URL+'/functions/v1/create-client', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
+    body: JSON.stringify({
+      email:        pending.email,
+      password:     pending.password,
+      firstName:    pending.firstName,
+      lastName:     pending.lastName    || '',
+      company:      pending.company     || '',
+      domain:       pending.domain      || null,
+      phone:        pending.phone       || null,
+      tier:         pending.tier        || 1,
+      billingCycle: pending.billingCycle|| 'monthly',
+      billingType:  (pending.tier===3||pending.tier==='3') ? 'one_time' : 'recurring',
     })
   })
   .then(function(r){ return r.json(); })
-  .then(function(sb){
-    if(!sb.user&&!sb.id) throw new Error(sb.msg||sb.error_description||sb.message||'Account creation failed.');
-    var uid   = (sb.user||sb).id;
-    var token = (sb.session&&sb.session.access_token)?sb.session.access_token:ANON;
-    var today   = new Date().toISOString().split('T')[0];
-    var renewal = new Date(Date.now()+365*24*60*60*1000).toISOString().split('T')[0];
-    var code    = 'CLI-'+Math.floor(10000+Math.random()*90000);
-    return fetch(SB_URL+'/rest/v1/clients',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'apikey':ANON,
-        'Authorization':'Bearer '+token,
-        'Prefer':'return=representation'
-      },
-      body:JSON.stringify({
-        auth_user_id:  uid,
-        client_code:   code,
-        name:          pending.company||pending.firstName,
-        email:         pending.email,
-        domain:        pending.domain||null,
-        phone:         pending.phone||null,
-        tier:          pending.tier||1,
-        status:        'active',
-        start_date:    today,
-        renewal_date:  renewal,
-        billing_cycle: pending.billingCycle||'monthly'
-      })
-    })
-    .then(function(r){ return r.json().then(function(d){ return {client:d,token:token}; }); });
-  })
   .then(function(res){
-    var clientRow = Array.isArray(res.client)?res.client[0]:res.client;
-    if(clientRow&&clientRow.id){
-      fetch(SB_URL+'/functions/v1/generate-invoice',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+res.token,'apikey':ANON},
-        body:JSON.stringify({client_id:clientRow.id})
-      }).catch(function(e){ console.warn('invoice:',e); });
+    if(res.error) console.error('create-client (redirect path):', res.error);
+    var row = res.client;
+    if(row && row.id){
+      var hdrs = {'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON};
+      fetch(SB_URL+'/functions/v1/send-welcome-email',{method:'POST',headers:hdrs,body:JSON.stringify({client_id:row.id})}).catch(function(){});
+      fetch(SB_URL+'/functions/v1/generate-invoice',{method:'POST',headers:hdrs,body:JSON.stringify({client_id:row.id})}).catch(function(){});
     }
     sessionStorage.removeItem('_acc_pending');
     showSuccessScreen(pending.firstName, pending.email);
   })
   .catch(function(e){
     console.error('post-stripe account setup:', e);
-    showSuccessScreen(pending.firstName, pending.email); // show success anyway — payment went through
+    showSuccessScreen(pending.firstName, pending.email);
   });
 })();
 
 
-function createAccount(p, stripeCtx){
+async function createAccount(p, stripeCtx){
   stripeCtx = stripeCtx || {};
   var ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
   var SB_URL = 'https://wfyzvmfvlukawidowuym.supabase.co';
-  return fetch(SB_URL+'/auth/v1/signup',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
-    body:JSON.stringify({
-      email:p.email, password:p.password,
-      options:{data:{full_name:p.firstName+' '+p.lastName, company:p.company}}
-    })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(sb){
-    if(!sb.user&&!sb.id) throw new Error(sb.msg||sb.error_description||'Account creation failed.');
-    var uid   = (sb.user||sb).id;
-    var token = (sb.session&&sb.session.access_token)?sb.session.access_token:ANON;
-    var today   = new Date().toISOString().split('T')[0];
-    var renewal = new Date(Date.now()+365*24*60*60*1000).toISOString().split('T')[0];
-    var code    = 'CLI-'+Math.floor(10000+Math.random()*90000);
-    // Tier 3 is always one_time; T1/T2 are recurring
-    var billingType = (p.tier===3||p.tier==='3') ? 'one_time' : 'recurring';
-    return fetch(SB_URL+'/rest/v1/clients',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+token,'Prefer':'return=representation'},
-      body:JSON.stringify({
-        auth_user_id:uid, client_code:code,
-        name:p.company||p.firstName, email:p.email,
-        domain:p.domain||null, phone:p.phone||null,
-        tier:p.tier||1, status:'active',
-        start_date:today, renewal_date:renewal,
-        billing_cycle:p.billingCycle||'monthly',
-        billing_type:billingType,
-        stripe_customer_id:stripeCtx.customerId||null,
-        stripe_promo_code_id:stripeCtx.promoCodeId||null,
-        terms_accepted:p.termsAccepted||false,
-        marketing_consent:p.marketingConsent||false,
-        msa_accepted:p.msaAccepted||false,
-        msa_version:p.msaVersion||null,
-        msa_accepted_at:p.msaAcceptedAt||null
+  var billingType = (p.tier===3||p.tier==='3') ? 'one_time' : 'recurring';
+
+  try {
+    // Single edge function call — uses service role key server-side to bypass RLS.
+    // Creates auth user (email pre-confirmed) + clients row atomically.
+    var r = await fetch(SB_URL+'/functions/v1/create-client', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
+      body: JSON.stringify({
+        email:              p.email,
+        password:           p.password,
+        firstName:          p.firstName,
+        lastName:           p.lastName,
+        company:            p.company,
+        domain:             p.domain || null,
+        phone:              p.phone  || null,
+        tier:               p.tier   || 1,
+        billingCycle:       p.billingCycle || 'monthly',
+        billingType:        billingType,
+        stripeCustomerId:   stripeCtx.customerId   || null,
+        stripePromoCodeId:  stripeCtx.promoCodeId  || null,
+        termsAccepted:      p.termsAccepted    || false,
+        marketingConsent:   p.marketingConsent || false,
+        msaAccepted:        p.msaAccepted      || false,
+        msaVersion:         p.msaVersion       || null,
+        msaAcceptedAt:      p.msaAcceptedAt    || null,
       })
-    })
-    .then(function(r){ return r.json().then(function(d){ return {client:d,token:token}; }); });
-  })
-  .then(function(res){
-    var row = Array.isArray(res.client)?res.client[0]:res.client;
-    if(!row||!row.id){ showSuccessScreen(p.firstName, p.email); return; }
+    });
+    var res = await r.json();
+    if (!r.ok || res.error) throw new Error(res.error || 'Account creation failed (HTTP '+r.status+')');
 
-    var billingType = (p.tier===3||p.tier==='3') ? 'one_time' : 'recurring';
+    var row = res.client;
+    if (!row || !row.id) throw new Error('Client record was not returned from server.');
 
-    // Step 3: Activate subscription (attaches card, creates Stripe Subscription)
-    var activatePromise = (billingType==='recurring' && stripeCtx.customerId && stripeCtx.priceId)
-      ? fetch(SB_URL+'/functions/v1/activate-subscription',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','Authorization':'Bearer '+ANON,'apikey':ANON},
-          body:JSON.stringify({
-            client_id:          row.id,
-            payment_method_id:  stripeCtx.paymentMethodId || null,
-            price_id:           stripeCtx.priceId,
-            customer_id:        stripeCtx.customerId,
-            promo_code_id:      stripeCtx.promoCodeId || null,
-            billing_type:       billingType
-          })
-        }).catch(function(e){ console.warn('activate-subscription:', e); })
-      : Promise.resolve();
+    // Non-blocking post-creation steps (run in parallel)
+    var ANON_HDR = {'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON};
 
-    // Step 4: Generate first invoice (non-blocking)
-    var invoicePromise = fetch(SB_URL+'/functions/v1/generate-invoice',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+ANON,'apikey':ANON},
+    // Welcome email with embed code
+    fetch(SB_URL+'/functions/v1/send-welcome-email', {
+      method:'POST', headers:ANON_HDR,
+      body:JSON.stringify({client_id:row.id})
+    }).catch(function(e){ console.warn('welcome-email:', e); });
+
+    // Activate Stripe subscription (recurring plans only)
+    if (billingType==='recurring' && stripeCtx.customerId && stripeCtx.priceId) {
+      fetch(SB_URL+'/functions/v1/activate-subscription', {
+        method:'POST', headers:ANON_HDR,
+        body:JSON.stringify({
+          client_id:         row.id,
+          payment_method_id: stripeCtx.paymentMethodId || null,
+          price_id:          stripeCtx.priceId,
+          customer_id:       stripeCtx.customerId,
+          promo_code_id:     stripeCtx.promoCodeId || null,
+          billing_type:      billingType
+        })
+      }).catch(function(e){ console.warn('activate-subscription:', e); });
+    }
+
+    // First invoice
+    fetch(SB_URL+'/functions/v1/generate-invoice', {
+      method:'POST', headers:ANON_HDR,
       body:JSON.stringify({client_id:row.id})
     }).catch(function(e){ console.warn('invoice:', e); });
 
-    return Promise.all([activatePromise, invoicePromise]);
-  })
-  .then(function(){ showSuccessScreen(p.firstName, p.email); })
-  .catch(function(e){
-    console.error('createAccount:',e);
     showSuccessScreen(p.firstName, p.email);
-  });
+
+  } catch(e) {
+    console.error('createAccount:', e);
+    // Show the actual error so user knows what happened
+    showCardError(e.message || 'Account creation failed. Please try again or contact support.');
+    resetSubmitBtn();
+  }
 }
 
 function showSuccessScreen(firstName, email){
