@@ -1519,14 +1519,16 @@ async function sendSetupLink() {
     // Copy link to clipboard
     try { await navigator.clipboard.writeText(setupUrl); } catch(_) {}
 
-    // Send email via Resend edge function (non-blocking)
+    // Send email using admin session token (same pattern as sendLoginInvite)
     try {
-      await fetch(SUPABASE_URL + '/functions/v1/send-onboarding-email', {
+      var emailSession = await _sb.auth.getSession();
+      var emailToken = emailSession.data.session ? emailSession.data.session.access_token : SUPABASE_ANON;
+      var emailRes = await fetch(SUPABASE_URL + '/functions/v1/send-onboarding-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + emailToken },
         body: JSON.stringify({
           to: cl.email,
-          subject: 'Set up your ACC payment — ' + (cl.name || ''),
+          subject: 'Set up your ACC account — ' + (cl.name || ''),
           html: '<div style="font-family:system-ui,sans-serif;background:#060d1a;color:#e8edf8;padding:32px;max-width:520px;margin:0 auto">'
             + '<h2 style="color:#4f8ef7">Welcome to ACC &mdash; set up your account</h2>'
             + '<p style="color:#8a9bbf">Hi ' + _esc(cl.name || 'there') + ', your accessibility compliance account has been created. Click below to set your password and enter your payment details.</p>'
