@@ -2666,14 +2666,19 @@ async function saveBilling() {
     var pay   = document.getElementById('ce-payment');
     var rate  = parseFloat((document.getElementById('ce-rate')||{}).value||0) || null;
     var newCycle = cycle ? cycle.options[cycle.selectedIndex].text.toLowerCase() : 'monthly';
-    // Recalculate renewal date from today + new cycle
-    var today = new Date();
+    // Recalculate renewal date from start_date + new cycle
+    // (not from today — preserves the original billing anchor)
+    var clientRow = (await _sb.from('clients').select('start_date,renewal_date').eq('id',_editingClientId).single()).data;
+    var anchorDate = clientRow && clientRow.start_date ? new Date(clientRow.start_date) : new Date();
     var newRenewal;
     if (newCycle === 'annual' || newCycle === 'yearly') {
-      var d = new Date(today); d.setFullYear(d.getFullYear()+1);
+      var d = new Date(anchorDate); d.setFullYear(d.getFullYear()+1);
+      // Advance until future date if start was in the past
+      while (d <= new Date()) d.setFullYear(d.getFullYear()+1);
       newRenewal = d.toISOString().split('T')[0];
     } else {
-      var d2 = new Date(today); d2.setMonth(d2.getMonth()+1);
+      var d2 = new Date(anchorDate);
+      while (d2 <= new Date()) d2.setMonth(d2.getMonth()+1);
       newRenewal = d2.toISOString().split('T')[0];
     }
     var r = await _sb.from('clients').update({
@@ -3296,7 +3301,8 @@ async function generateInvoiceForClient() {
     // Upload to invoices bucket as .html
     var enc   = new TextEncoder().encode(html);
     var fname = code + '/' + ym + '-invoice.html';
-    var up    = await _sb.storage.from('invoices').upload(fname, enc, { contentType:'application/octet-stream', upsert:true });
+    // No contentType specified — let Supabase infer. Remove MIME restriction in bucket settings.
+    var up    = await _sb.storage.from('invoices').upload(fname, enc, { upsert:true });
     if (up.error) throw up.error;
     showToastAdmin('Invoice generated for ' + ym, 'success');
     renderFileList('invoices', code);
