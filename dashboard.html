@@ -898,6 +898,8 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
             <span class="pill green" id="acc-status">Active</span>
           </div>
           <div style="font-family:var(--mono);font-size:1.6rem;font-weight:700;color:#fff;margin-bottom:4px"><span id="acc-price">—</span> <span style="font-size:.85rem;font-weight:400;color:var(--muted)" id="acc-billing-cadence">CAD / month</span></div>
+          <div id="acc-bespoke-note" style="font-size:.75rem;color:#f5a623;display:none"></div>
+          <div id="acc-setup-note" style="font-size:.75rem;color:#38d9a9;margin-bottom:2px"></div>
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px"><span id="acc-renewal-label">Next billing:</span> <span id="acc-renewal">—</span></div>
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:20px">Start date: <span id="acc-start-date">—</span></div>
           <div class="btn-row">
@@ -2876,12 +2878,27 @@ function populateAccount(c, billingRows) {
     4: 'Bespoke — custom pricing & terms',
   };
   set('acc-tier-desc', tierDescs[parseInt(c.tier)] || '');
-  var cycleLabel = (c.billing_cycle === 'annual' || c.billing_cycle === 'yearly') ? 'Annual' : 'Monthly';
+  var effectiveCycle = c.billing_cycle || 'monthly';
+  var cycleLabel = (effectiveCycle === 'annual' || effectiveCycle === 'yearly') ? 'Annual' : 'Monthly';
   var renewalEl = document.getElementById('acc-renewal-label');
-  if (renewalEl) renewalEl.textContent = 'Next ' + cycleLabel + ' billing:';
+  if (renewalEl) renewalEl.textContent = (c.status === 'cancelled' ? 'Access until:' : 'Next ' + cycleLabel + ' billing:');
   var cadenceEl = document.getElementById('acc-billing-cadence');
   if (cadenceEl) cadenceEl.textContent = 'CAD / ' + cycleLabel.toLowerCase();
+  // Bespoke: show setup fee note if applicable
+  var bespokeNote = document.getElementById('acc-bespoke-note');
+  if (bespokeNote) {
+    if (parseInt(c.tier) === 4 && c.bespoke_setup_price > 0) {
+      bespokeNote.textContent = '+ $' + parseFloat(c.bespoke_setup_price).toFixed(2) + ' one-time setup fee';
+      bespokeNote.style.display = 'block';
+    } else { bespokeNote.style.display = 'none'; }
+  }
   set('acc-price', tierPrice(c.tier, c));
+  // Bespoke: also show setup price if applicable
+  var setupNote = document.getElementById('acc-setup-note');
+  if (setupNote) {
+    setupNote.textContent = (c.tier==4 && c.bespoke_setup_price>0)
+      ? '+ $'+parseFloat(c.bespoke_setup_price).toFixed(2)+' one-time setup fee' : '';
+  }
   set('acc-renewal', fmtDateLong(c.renewal_date));
   set('acc-start-date', c.start_date ? fmtDateLong(c.start_date) : '—');
   var statusText = (c.status || 'active').charAt(0).toUpperCase() + (c.status || 'active').slice(1);
