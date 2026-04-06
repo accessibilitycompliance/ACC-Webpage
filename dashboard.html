@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<script src="https://js.stripe.com/v3/" defer></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
 <meta name="theme-color" content="#0a1628"/>
 <meta name="color-scheme" content="dark"/>
@@ -896,7 +897,6 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px"><span id="acc-renewal-label">Next billing:</span> <span id="acc-renewal">—</span></div>
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:20px">Start date: <span id="acc-start-date">—</span></div>
           <div class="btn-row">
-            <button class="btn-sm btn-ghost" id="btn-upgrade-tier" onclick="requestTierUpgrade()">Upgrade Plan</button>
             <button class="btn-sm btn-danger" onclick="confirmCancel()">Cancel Subscription</button>
           </div>
         </div>
@@ -991,18 +991,21 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
     <div class="modal-overlay" id="update-card-modal" role="dialog" aria-modal="true" aria-label="Update payment card">
       <div class="modal-box">
         <button class="modal-close" onclick="closeModal('update-card-modal')" aria-label="Close">&times;</button>
-        <h2 style="margin-bottom:20px">&#128179; Update Payment Method</h2>
-        <div class="fgroup"><label>Cardholder Name</label><input class="finput" type="text" id="new-card-name" placeholder="Jane Smith" style="width:100%"/></div>
-        <div class="fgroup"><label>Card Number</label><input class="finput" type="text" id="new-card-num" placeholder="1234 5678 9012 3456" maxlength="19" oninput="fmtCard(this)" style="width:100%;font-family:'JetBrains Mono',monospace"/></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="fgroup"><label>Expiry</label><input class="finput" type="text" id="new-card-exp" placeholder="MM / YY" maxlength="7" oninput="fmtExpiry(this)" style="width:100%"/></div>
-          <div class="fgroup"><label>CVV</label><input class="finput" type="password" id="new-card-cvv" placeholder="•••" maxlength="4" style="width:100%"/></div>
+        <h2 style="margin-bottom:6px">&#128179; Update Payment Method</h2>
+        <p style="font-size:.8rem;color:var(--muted);margin-bottom:20px">Your new card will be validated by Stripe and used for all future billing.</p>
+        <div class="fgroup"><label for="new-card-name">Cardholder Name</label>
+          <input class="finput" type="text" id="new-card-name" placeholder="Jane Smith" autocomplete="cc-name" style="width:100%"/>
         </div>
-        <div style="background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.15);border-radius:8px;padding:10px 14px;margin:12px 0;font-size:.75rem;color:#8a9bbf">
-          &#128274; Your card details are encrypted and processed securely via Stripe. ACC does not store raw card data.
+        <div class="fgroup"><label>Card Details</label>
+          <!-- Stripe Elements mounts here -->
+          <div id="stripe-card-element" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:14px 16px;font-size:.88rem"></div>
+          <div id="stripe-card-error" role="alert" style="color:#f05f5f;font-size:.78rem;margin-top:6px;display:none"></div>
         </div>
-        <div class="btn-row" style="margin-top:16px">
-          <button class="btn-sm btn-primary" onclick="saveCard()">Save New Card</button>
+        <div style="background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.15);border-radius:8px;padding:10px 14px;margin:4px 0 16px;font-size:.75rem;color:#8a9bbf">
+          &#128274; Card details go directly to Stripe — ACC never sees or stores raw card numbers.
+        </div>
+        <div class="btn-row">
+          <button class="btn-sm btn-primary" id="save-card-btn" onclick="saveCard()">&#10003; Save New Card</button>
           <button class="btn-sm btn-ghost" onclick="closeModal('update-card-modal')">Cancel</button>
         </div>
       </div>
@@ -2059,47 +2062,105 @@ var TEMPLATE_URLS = {
 
 
 
-// -- Payment Method --
-function fmtCard(el) {
-  var v = el.value.replace(/\D/g,'').substring(0,16);
-  el.value = v.replace(/(\d{4})/g,'$1 ').trim();
-}
-function fmtExpiry(el) {
-  var v = el.value.replace(/\D/g,'').substring(0,4);
-  if (v.length >= 3) v = v.substring(0,2) + ' / ' + v.substring(2);
-  el.value = v;
+// ── Payment Method — Stripe Elements ─────────────────────────────────────
+var _cardUpdateStripe = null;
+var _cardUpdateElement = null;
+
+function initStripeCardUpdate() {
+  if (_cardUpdateStripe || typeof Stripe === 'undefined') return;
+  try {
+    _cardUpdateStripe = Stripe('pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ');
+    var elements = _cardUpdateStripe.elements({
+      appearance: {
+        theme: 'night',
+        variables: { colorPrimary: '#4f8ef7', colorBackground: 'rgba(10,22,40,.8)', colorText: '#e8edf8', colorDanger: '#f05f5f', fontFamily: 'system-ui, sans-serif', borderRadius: '8px' }
+      }
+    });
+    _cardUpdateElement = elements.create('card', { hidePostalCode: true });
+    _cardUpdateElement.mount('#stripe-card-element');
+    _cardUpdateElement.on('change', function(e) {
+      var errEl = document.getElementById('stripe-card-error');
+      if (errEl) { errEl.textContent = e.error ? e.error.message : ''; errEl.style.display = e.error ? 'block' : 'none'; }
+    });
+  } catch(e) { console.warn('Stripe init failed:', e); }
 }
 
+// Init Stripe card element when Update Card modal opens
+var _origOpenModal = window.openModal;
+window.openModal = function(id) {
+  if (typeof _origOpenModal === 'function') _origOpenModal(id);
+  if (id === 'update-card-modal') {
+    setTimeout(function() {
+      if (typeof Stripe !== 'undefined') initStripeCardUpdate();
+      else { var s=document.createElement('script'); s.src='https://js.stripe.com/v3/'; s.onload=initStripeCardUpdate; document.head.appendChild(s); }
+    }, 100);
+  }
+};
+
 async function saveCard() {
-  var num  = (document.getElementById('new-card-num')  ||{}).value.trim();
-  var name = (document.getElementById('new-card-name') ||{}).value.trim();
-  var exp  = (document.getElementById('new-card-exp')  ||{}).value.trim();
-  if (!num || !name || !exp) { alert('Please fill in all card fields.'); return; }
-  var last4 = num.replace(/\s/g,'').slice(-4);
-  var btn = (window.event && window.event.target) || null;
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  var name = (document.getElementById('new-card-name') || {}).value.trim();
+  var errEl = document.getElementById('stripe-card-error');
+  var btn   = document.getElementById('save-card-btn');
+  if (!name) { if(errEl){errEl.textContent='Please enter the cardholder name.';errEl.style.display='block';} return; }
+  if (!_cardUpdateStripe || !_cardUpdateElement) { if(errEl){errEl.textContent='Payment system not ready. Please close and reopen.';errEl.style.display='block';} return; }
+  if (!window._clientData) { alert('Please log in first.'); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Validating…'; }
+  if (errEl) errEl.style.display = 'none';
+
   try {
-    if (window._clientData) {
-      var { error } = await _sb_client.from('clients').update({
-        card_last4:   last4,
-        card_name:    name,
-        card_expiry:  exp,
-      }).eq('id', _clientData.id);
-      if (error) throw error;
-    }
-    // Update display
+    // Step 1: Create SetupIntent via stripe-checkout edge function
+    var siRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/stripe-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': _sb_client.supabaseKey || '' },
+      body: JSON.stringify({
+        email:        _clientData.email,
+        company:      _clientData.name,
+        tier:         _clientData.tier,
+        billingCycle: _clientData.billing_cycle || 'monthly',
+        amount:       0,  // SetupIntent only — no price needed
+      })
+    });
+    var siData = await siRes.json();
+    if (siData.error) throw new Error(siData.error);
+
+    // Step 2: Confirm new card via Stripe Elements
+    var result = await _cardUpdateStripe.confirmCardSetup(siData.clientSecret, {
+      payment_method: {
+        card: _cardUpdateElement,
+        billing_details: { name: name, email: _clientData.email }
+      }
+    });
+    if (result.error) throw new Error(result.error.message);
+    var paymentMethodId = result.setupIntent.payment_method;
+
+    // Step 3: Attach to customer + subscription via edge function
+    if (btn) btn.textContent = 'Saving…';
+    var updRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-payment-method', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': _sb_client.supabaseKey || '' },
+      body: JSON.stringify({ client_id: _clientData.id, payment_method_id: paymentMethodId })
+    });
+    var updData = await updRes.json();
+    if (updData.error) throw new Error(updData.error);
+
+    // Step 4: Update local data + display
+    _clientData.card_last4  = updData.last4;
+    _clientData.card_expiry = updData.expiry;
+    window._clientData = _clientData;
+    var brandLabel = (updData.brand || 'card').toUpperCase();
     var d = document.getElementById('card-display');
-    if (d) d.innerHTML = '<div style="display:flex;align-items:center;gap:14px">' +
-      '<div style="background:#1a3060;border-radius:6px;padding:6px 10px;font-size:.75rem;font-weight:700;color:#4f8ef7;letter-spacing:.04em">VISA</div>' +
-      '<div><div style="font-size:.88rem;font-weight:600">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; ' + last4 + '</div>' +
-      '<div style="font-size:.75rem;color:#8a9bbf">Expires ' + exp + ' &nbsp;&bull;&nbsp; ' + esc(name) + '</div></div></div>' +
-      '<span class="pill green" style="font-size:.72rem">Default</span>';
+    if (d) d.innerHTML = '<div style="display:flex;align-items:center;gap:14px">'
+      + '<div style="background:#1a3060;border-radius:6px;padding:6px 10px;font-size:.75rem;font-weight:700;color:#4f8ef7;letter-spacing:.04em">' + esc(brandLabel) + '</div>'
+      + '<div><div style="font-size:.88rem;font-weight:600">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; ' + esc(updData.last4||'') + '</div>'
+      + '<div style="font-size:.75rem;color:#8a9bbf">Expires ' + esc(updData.expiry||'') + ' &nbsp;&bull;&nbsp; ' + esc(name) + '</div></div></div>'
+      + '<span class="pill green" style="font-size:.72rem">Default</span>';
     closeModal('update-card-modal');
-    showToast('Payment method updated.');
+    showToast('&#10003; Payment method updated and validated.');
+
   } catch(e) {
-    alert('Could not save card: ' + e.message);
+    if (errEl) { errEl.textContent = e.message || 'Card update failed. Please try again.'; errEl.style.display = 'block'; }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save New Card'; }
+    if (btn) { btn.disabled = false; btn.textContent = '\u2713 Save New Card'; }
   }
 }
 async function saveBillingAddress() {
@@ -2770,17 +2831,6 @@ function populateAccount(c, billingRows) {
        : c.status === 'past_due' ? 'yellow'
        : c.status === 'cancelled' ? 'red'
        : 'blue');
-  }
-  // Dynamic upgrade button
-  var upgradeBtn = document.getElementById('btn-upgrade-tier');
-  if (upgradeBtn) {
-    var t = parseInt(c.tier) || 1;
-    if (t >= 3) { upgradeBtn.style.display = 'none'; }
-    else {
-      var nextNames = { 1: 'Upgrade to Tier 2', 2: 'Upgrade to Tier 3 (Enterprise)' };
-      upgradeBtn.textContent = nextNames[t] || 'Upgrade Plan';
-      upgradeBtn.style.display = ''; upgradeBtn.disabled = false;
-    }
   }
   // Cancel restrict nav only after renewal passes
   if ((c.status||'').toLowerCase() === 'cancelled') {
@@ -3692,21 +3742,6 @@ async function generateAndDownloadReport(monthKey) {
 }
 
 // Generate + download the annual evidence binder.
-function requestTierUpgrade() {
-  if (!window._clientData) return;
-  var current = parseInt(_clientData.tier) || 1;
-  if (current >= 3) { showToast('You are already on our highest tier.'); return; }
-  var names = { 1: 'Tier 2 — Professional', 2: 'Tier 3 — Enterprise' };
-  if (confirm('Request upgrade to ' + (names[current] || 'next tier') + '?\n\nACC will contact you to confirm.')) {
-    _sb_client.from('clients').update({
-      billing_notes: ((_clientData.billing_notes || '') + '\n[UPGRADE REQUEST] Tier ' + current + ' requested ' + new Date().toLocaleDateString('en-CA')).trim(),
-      updated_at: new Date().toISOString()
-    }).eq('id', _clientData.id).then(function(){}).catch(function(){});
-    showToast('✓ Upgrade request submitted. ACC will contact you within 1 business day.');
-    var btn = document.getElementById('btn-upgrade-tier');
-    if (btn) { btn.textContent = '⏳ Upgrade Requested'; btn.disabled = true; }
-  }
-}
 
 
 async function generateAndDownloadBinder(year) {

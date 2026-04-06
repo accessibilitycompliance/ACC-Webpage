@@ -700,13 +700,24 @@ Scores show <em>site today → with widget applied</em>.
     <!-- Bespoke pricing fields — shown only for Tier 4 -->
     <div id="nc-bespoke-fields" style="display:none;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:14px;margin-bottom:12px">
       <div style="font-size:.75rem;color:#4f8ef7;font-weight:700;margin-bottom:10px">&#9881; Tier 4 — Bespoke Pricing</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
-          <input class="finput" id="nc-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00" title="One-time setup fee. 0 = free setup."></div>
-        <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
-          <input class="finput" id="nc-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00" title="Monthly recurring amount. 0 = trial/free."></div>
-        <div class="fgroup" style="margin:0;grid-column:1/-1"><label>Trial Period (days, 0 = no trial)</label>
-          <input class="finput" id="nc-bespoke-trial" type="number" min="0" value="0" title="0 = charge immediately. &gt;0 = free trial before first charge."></div>
+      <div style="margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:pointer">
+          <input type="checkbox" id="nc-bespoke-trial-chk" onchange="toggleBespokeTrialFields('nc')">
+          <span>&#9200; Start with a free trial (no billing until trial ends)</span>
+        </label>
+        <div id="nc-trial-days-row" style="display:none;margin-top:8px">
+          <label style="font-size:.75rem;color:#8a9bbf">Trial length (days — no limit)</label>
+          <input class="finput" id="nc-bespoke-trial" type="number" min="1" placeholder="e.g. 30" style="margin-top:4px">
+          <div style="font-size:.68rem;color:#8a9bbf;margin-top:4px">Pricing fields are hidden during trial. Set them before converting to a paid plan.</div>
+        </div>
+      </div>
+      <div id="nc-bespoke-pricing-fields">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
+            <input class="finput" id="nc-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
+            <input class="finput" id="nc-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        </div>
       </div>
       <div id="nc-bespoke-hint" style="font-size:.7rem;color:#8a9bbf;margin-top:8px"></div>
     </div>
@@ -786,18 +797,32 @@ Scores show <em>site today → with widget applied</em>.
       <!-- Billing type indicator -->
       <div id="ce-billing-type-row" style="margin-bottom:12px;padding:8px 12px;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.2);border-radius:8px;font-size:.78rem;color:#4f8ef7;display:none">
         <strong>Billing Type:</strong> <span id="ce-billing-type-label">—</span>
-        &nbsp;·&nbsp; <button class="btn-sm btn-ghost" style="font-size:.72rem;padding:2px 8px" onclick="sendSetupLink()" title="Send Stripe payment setup link to client">&#128279; Send Setup Link</button>
+        &nbsp;·&nbsp; <span id="ce-setup-link-btn">
+          <button class="btn-sm btn-ghost" style="font-size:.72rem;padding:2px 8px" onclick="sendSetupLink()" title="Send payment page link to client so they can enter card details">&#128279; Send Card Setup Link</button>
+          <span style="font-size:.68rem;color:#8a9bbf"> — copies link &amp; emails client to enter card details</span>
+        </span>
       </div>
       <!-- Bespoke pricing fields (Tier 4) -->
       <div id="ce-bespoke-fields" style="display:none;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:14px;margin-bottom:12px">
         <div style="font-size:.75rem;color:#4f8ef7;font-weight:700;margin-bottom:10px">&#9881; Bespoke Pricing</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
-            <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
-          <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
-            <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
-          <div class="fgroup" style="margin:0;grid-column:1/-1"><label>Trial Period (days)</label>
-            <input class="finput" id="ce-bespoke-trial" type="number" min="0" value="0"></div>
+        <div style="margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:pointer">
+            <input type="checkbox" id="ce-bespoke-trial-chk" onchange="toggleBespokeTrialFields('ce')">
+            <span>&#9200; Currently on free trial (pricing locked until trial ends)</span>
+          </label>
+          <div id="ce-trial-days-row" style="display:none;margin-top:8px">
+            <label style="font-size:.75rem;color:#8a9bbf">Trial length (days)</label>
+            <input class="finput" id="ce-bespoke-trial" type="number" min="1" placeholder="e.g. 30" style="margin-top:4px">
+          </div>
+        </div>
+        <div id="ce-bespoke-pricing-fields">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
+              <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
+            <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
+              <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          </div>
+          <div style="font-size:.68rem;color:#8a9bbf;margin-top:8px">Saving with a setup price will auto-generate a setup invoice. Saving a recurring price starts the billing cycle.</div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
@@ -1506,12 +1531,11 @@ async function sendSetupLink() {
       await _sb.from('clients').update({ stripe_customer_id: res.customerId }).eq('id', clientId);
     }
 
-    // Build setup URL for this client
-    var setupUrl = 'https://accessibilitycompliance.ca/payment.html'
-      + '?email=' + encodeURIComponent(cl.email || '')
-      + '&company=' + encodeURIComponent(cl.name || '')
-      + '&tier=' + encodeURIComponent(cl.tier || 1)
-      + '&cycle=' + encodeURIComponent(cl.billing_cycle || 'monthly');
+    // Build onboarding URL — uses client-onboarding.html (not payment.html)
+    // This lets admin-created clients set a password + enter card without re-registering
+    var setupUrl = 'https://accessibilitycompliance.ca/client-onboarding.html'
+      + '?code=' + encodeURIComponent(cl.client_code || '')
+      + '&email=' + encodeURIComponent(cl.email || '');
 
     // Copy link to clipboard
     try { await navigator.clipboard.writeText(setupUrl); } catch(_) {}
@@ -1525,11 +1549,12 @@ async function sendSetupLink() {
           to: cl.email,
           subject: 'Set up your ACC payment — ' + (cl.name || ''),
           html: '<div style="font-family:system-ui,sans-serif;background:#060d1a;color:#e8edf8;padding:32px;max-width:520px;margin:0 auto">'
-            + '<h2 style="color:#4f8ef7">Complete your ACC subscription setup</h2>'
-            + '<p style="color:#8a9bbf">Hi ' + escHtml(cl.name || 'there') + ', your accessibility compliance account is ready. Please click below to enter your payment details.</p>'
-            + '<a href="' + setupUrl + '" style="display:inline-block;background:linear-gradient(135deg,#4f8ef7,#38d9a9);color:#0a1628;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;margin:16px 0">Set Up Payment</a>'
+            + '<h2 style="color:#4f8ef7">Welcome to ACC &mdash; set up your account</h2>'
+            + '<p style="color:#8a9bbf">Hi ' + _esc(cl.name || 'there') + ', your accessibility compliance account has been created. Click below to set your password and enter your payment details.</p>'
+            + '<a href="' + setupUrl + '" style="display:inline-block;background:linear-gradient(135deg,#4f8ef7,#38d9a9);color:#0a1628;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;margin:16px 0">Activate My Account &#8594;</a>'
+            + '<p style="color:#8a9bbf;font-size:.82rem">You will be asked to set a password and enter your payment card on the next page.</p>'
             + '<p style="color:#4a5568;font-size:.78rem">Or copy this link: <a href="' + setupUrl + '" style="color:#4f8ef7">' + setupUrl + '</a></p>'
-            + '<p style="color:#4a5568;font-size:.75rem;margin-top:24px">ACC · accessibilitycompliance.ca</p>'
+            + '<p style="color:#4a5568;font-size:.75rem;margin-top:24px">ACC &middot; accessibilitycompliance.ca</p>'
             + '</div>'
         })
       });
@@ -1551,6 +1576,192 @@ async function sendSetupLink() {
     showToastAdmin('Failed to send setup link: ' + (e.message || e), 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔗 Send Setup Link'; }
+  }
+}
+
+
+
+// ── Tier / billing change handler ─────────────────────────────────────────────
+// Called after saveClientInfo saves the DB row.
+// Handles all 6 tier-change scenarios explicitly with confirmation dialogs.
+async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTrialDays) {
+  var hasSub  = !!client.stripe_subscription_id;
+  var hasCard = !!client.stripe_customer_id;
+  var isTrial = bTrialDays > 0 && newTier === 4;
+  var tierAmt = newTier === 1 ? 69 : newTier === 2 ? 199 : 0;
+
+  // S1: Trial active — no Stripe action, just inform admin
+  if (isTrial) {
+    showToastAdmin('\u23F1 Client is on a ' + bTrialDays + '-day trial. No billing started. When trial ends, uncheck trial and save to start billing.', 'info');
+    return;
+  }
+
+  // S2: Any -> Tier 3 — cancel existing subscription
+  if (newTier === 3 && hasSub) {
+    if (!confirm('Changing to Tier 3 will CANCEL the Stripe subscription.\nThe client will not be charged again automatically.\nFuture invoices must be sent manually.\n\nProceed?')) return;
+    try {
+      var cr = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+        body: JSON.stringify({ client_id: client.id, action: 'cancel' })
+      });
+      var cres = await cr.json();
+      if (cres.error) showToastAdmin('Stripe cancel warning: ' + cres.error, 'warn');
+      else showToastAdmin('Subscription cancelled. Tier 3 active.', 'success');
+    } catch(e) { showToastAdmin('Could not cancel subscription: ' + (e.message||e), 'error'); }
+    return;
+  }
+
+  // S3: Tier 4 Bespoke — setup invoice + subscription
+  if (newTier === 4) {
+    var actions = [];
+    if (bSetup > 0)     actions.push('Setup invoice: $' + bSetup.toFixed(2) + ' + HST');
+    if (bRecurring > 0) actions.push((hasSub ? 'Update' : 'Create') + ' recurring: $' + bRecurring.toFixed(2) + '/mo');
+    if (!actions.length) { showToastAdmin('Tier 4 saved. No pricing set — no billing action taken.', 'info'); return; }
+    if (!confirm('Bespoke billing:\n\n' + actions.join('\n') + '\n\nProceed?')) return;
+
+    if (bSetup > 0) {
+      try {
+        var ir = await fetch(SUPABASE_URL + '/functions/v1/create-stripe-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+          body: JSON.stringify({ client_id: client.id, amount_cents: Math.round(bSetup * 100), description: 'Tier 4 Bespoke — Setup Fee', due_days: 14 })
+        });
+        var ires = await ir.json();
+        if (ires.error) showToastAdmin('Setup invoice warning: ' + ires.error, 'warn');
+        else showToastAdmin('Setup invoice sent ($' + bSetup.toFixed(2) + ').', 'success');
+      } catch(e) { showToastAdmin('Setup invoice error: ' + (e.message||e), 'error'); }
+    }
+
+    if (bRecurring > 0) {
+      if (!hasCard) {
+        showToastAdmin('\u26A0 No card on file. Send the client a Card Setup Link to start recurring billing.', 'warn');
+      } else {
+        try {
+          var ur = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+            body: JSON.stringify({ client_id: client.id, tier: 4, billing_cycle: client.billing_cycle || 'monthly', bespoke_price: bRecurring, action: hasSub ? 'update' : 'create' })
+          });
+          var ures = await ur.json();
+          if (ures.error) showToastAdmin('Subscription warning: ' + ures.error, 'warn');
+          else showToastAdmin('Recurring billing ' + (hasSub ? 'updated' : 'started') + ' at $' + bRecurring.toFixed(2) + '/mo.', 'success');
+        } catch(e) { showToastAdmin('Subscription error: ' + (e.message||e), 'error'); }
+      }
+    }
+    return;
+  }
+
+  // S4 & S5: Tier 1/2 — create or update subscription
+  if (newTier === 1 || newTier === 2) {
+    if (!hasCard) {
+      showToastAdmin('\u26A0 No card on file. Send the client a Card Setup Link first, then billing will start once they add their card.', 'warn');
+      return;
+    }
+    if (!hasSub) {
+      if (!confirm('Create a new Stripe subscription at $' + tierAmt + '/mo?\nThe client\'s saved card will be charged each billing cycle.\n\nProceed?')) return;
+      try {
+        var cr2 = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+          body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'create' })
+        });
+        var cr2res = await cr2.json();
+        if (cr2res.error) showToastAdmin('Could not create subscription: ' + cr2res.error, 'error');
+        else showToastAdmin('Subscription created at $' + tierAmt + '/mo.', 'success');
+      } catch(e) { showToastAdmin('Subscription error: ' + (e.message||e), 'error'); }
+      return;
+    }
+    // Has subscription — update price next cycle
+    if (!confirm('Update subscription to Tier ' + newTier + ' ($' + tierAmt + '/mo)?\nTakes effect at next billing cycle. No proration.\n\nProceed?')) return;
+    try {
+      var ur2 = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+        body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'update' })
+      });
+      var ur2res = await ur2.json();
+      if (ur2res.error) showToastAdmin('Update warning: ' + ur2res.error, 'warn');
+      else showToastAdmin('Subscription updated to $' + tierAmt + '/mo (next cycle).', 'success');
+    } catch(e) { showToastAdmin('Update error: ' + (e.message||e), 'error'); }
+  }
+}
+
+
+// ── Bespoke trial toggle ─────────────────────────────────────────────────────
+function toggleBespokeTrialFields(prefix) {
+  var chk       = document.getElementById(prefix + '-bespoke-trial-chk');
+  var trialRow  = document.getElementById(prefix + '-trial-days-row');
+  var pricingEl = document.getElementById(prefix + '-bespoke-pricing-fields');
+  var isTrial   = chk && chk.checked;
+  if (trialRow)  trialRow.style.display  = isTrial ? 'block' : 'none';
+  if (pricingEl) pricingEl.style.display = isTrial ? 'none'  : 'block';
+}
+
+// ── Admin billing: view invoice — generate if not yet in storage ──────────────
+async function adminViewInvoice(btn) {
+  var bucket   = btn.dataset.bucket;
+  var path     = btn.dataset.path;
+  var ym       = btn.dataset.ym;
+  var code     = btn.dataset.code;
+  var origText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Loading…';
+  // Try to open existing file first
+  try {
+    var r = await _sb.storage.from(bucket).createSignedUrl(path, 300);
+    if (!r.error) {
+      var res = await fetch(r.data.signedUrl);
+      if (res.ok) {
+        var html = await res.text();
+        var win = window.open('', '_blank');
+        if (win) { win.document.open(); win.document.write(html); win.document.close(); }
+        btn.disabled = false; btn.textContent = origText; return;
+      }
+    }
+  } catch(_) {}
+  // File not found — generate it now
+  try {
+    showToastAdmin('Generating invoice…', 'info');
+    var gr = await fetch(SUPABASE_URL + '/functions/v1/generate-invoice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify({ client_code: code, month: ym })
+    });
+    var gres = await gr.json();
+    if (gr.ok && !gres.error) {
+      // Try to open the newly generated file
+      var r2 = await _sb.storage.from(bucket).createSignedUrl(path, 300);
+      if (!r2.error) {
+        var res2 = await fetch(r2.data.signedUrl);
+        if (res2.ok) {
+          var html2 = await res2.text();
+          var win2 = window.open('', '_blank');
+          if (win2) { win2.document.open(); win2.document.write(html2); win2.document.close(); }
+          btn.disabled = false; btn.textContent = origText; return;
+        }
+      }
+    }
+    showToastAdmin('Could not generate invoice: ' + (gres.error || 'unknown error'), 'error');
+  } catch(e) {
+    showToastAdmin('Error: ' + (e.message || e), 'error');
+  }
+  btn.disabled = false; btn.textContent = origText;
+}
+
+// ── Manual billing status update ─────────────────────────────────────────────
+async function updateBillingStatus(sel) {
+  var billingId = sel.dataset.billingId;
+  var newStatus = sel.value;
+  if (!billingId) return;
+  try {
+    var upd = { status: newStatus, updated_at: new Date().toISOString() };
+    if (newStatus === 'paid') upd.paid_at = new Date().toISOString();
+    var r = await _sb.from('billing').update(upd).eq('id', billingId);
+    if (r.error) throw r.error;
+    showToastAdmin('Payment status updated to ' + newStatus, 'success');
+  } catch(e) {
+    showToastAdmin('Failed to update status: ' + (e.message || e), 'error');
+    // Revert select to previous value not easy — just re-render the tab
   }
 }
 
@@ -2094,7 +2305,10 @@ async function openClientEditor(btn) {
     var _setNum = function(id, val) { var el = document.getElementById(id); if (el) el.value = (val != null && val !== '') ? val : ''; };
     _setNum('ce-bespoke-setup',     cTier === 4 ? c.bespoke_setup_price     : '');
     _setNum('ce-bespoke-recurring', cTier === 4 ? c.bespoke_recurring_price : '');
-    _setNum('ce-bespoke-trial',     cTier === 4 ? (c.bespoke_trial_days || 0) : 0);
+    var isTrial = cTier === 4 && (c.bespoke_trial_days || 0) > 0;
+    var trialChk = document.getElementById('ce-bespoke-trial-chk');
+    if (trialChk) { trialChk.checked = isTrial; toggleBespokeTrialFields('ce'); }
+    _setNum('ce-bespoke-trial', cTier === 4 ? (c.bespoke_trial_days || '') : '');
 
     // Billing type indicator
     var billingTypeRow = document.getElementById('ce-billing-type-row');
@@ -2143,23 +2357,25 @@ async function openClientEditor(btn) {
           var code = window._editingClientCode || '';
           var rows = br.data.map(function(b) {
             var ym = (b.period ? b.period.substring(0,7) : (b.paid_at||b.created_at||'').substring(0,7));
-            // Try .html first (new format), fall back to .pdf (legacy)
             var filePathHtml = code + '/' + ym + '-invoice.html';
-            var filePathPdf  = code + '/' + ym + '-invoice.pdf';
-            // We'll attempt html; downloadAdminFile handles both
+            // PDF button: auto-generates if file not found
             var dlBtn = ym
-              ? '<button class="btn-sm btn-ghost" style="padding:3px 8px;font-size:.7rem" data-bucket="invoices" data-path="' + filePathHtml + '" onclick="downloadAdminFile(this.dataset.bucket,this.dataset.path)">&#8659;</button>'
+              ? '<button class="btn-sm btn-ghost" style="padding:3px 8px;font-size:.7rem" data-bucket="invoices" data-path="' + filePathHtml + '" data-ym="' + ym + '" data-code="' + esc(code) + '" onclick="adminViewInvoice(this)">&#8659; PDF</button>'
               : '';
-            // Status pill
+            // Status: editable dropdown for manual updates
             var st = (b.status || 'pending').toLowerCase();
             var pillCls = st === 'paid' ? 'green' : st === 'failed' || st === 'overdue' ? 'red' : 'yellow';
-            var stLabel = st === 'paid' ? 'Paid' : st === 'failed' ? 'Failed' : st === 'overdue' ? 'Overdue' : st === 'cancelled' ? 'Cancelled' : st.charAt(0).toUpperCase() + st.slice(1);
-            var statusCell = '<span class="pill ' + pillCls + '">' + stLabel + '</span>'
+            var statusSel = '<select data-billing-id="' + b.id + '" onchange="updateBillingStatus(this)" '
+              + 'style="font-size:.7rem;padding:2px 4px;border-radius:6px;background:rgba(17,34,68,.8);color:#e8edf8;border:1px solid rgba(30,58,107,.6);cursor:pointer">'
+              + ['pending','paid','failed','overdue','cancelled'].map(function(s){
+                  return '<option value="'+s+'"'+(s===st?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';
+                }).join('')
+              + '</select>'
               + (st === 'failed' && b.failure_reason ? '<br><span style="font-size:.65rem;color:#f05f5f">' + esc(b.failure_reason) + '</span>' : '');
             return '<tr>' +
               '<td>' + fmtDate(b.paid_at||b.period||b.created_at) + '</td>' +
               '<td>' + (b.amount != null ? '$' + parseFloat(b.amount).toFixed(2) : '—') + '</td>' +
-              '<td>' + statusCell + '</td>' +
+              '<td>' + statusSel + '</td>' +
               '<td>' + dlBtn + '</td>' +
               '</tr>';
           }).join('');
@@ -2263,6 +2479,12 @@ async function saveClientInfo() {
 
     // ── UPDATE clients ──
     var widgetActiveEl = document.getElementById('ce-widget-active');
+    // Bespoke pricing (Tier 4)
+    var bSetup     = parseFloat((document.getElementById('ce-bespoke-setup')||{value:'0'}).value)||0;
+    var bRecurring = parseFloat((document.getElementById('ce-bespoke-recurring')||{value:'0'}).value)||0;
+    var bTrial     = parseInt((document.getElementById('ce-bespoke-trial')||{value:'0'}).value)||0;
+    var billingType = tier === 3 ? 'one_time' : 'recurring';
+
     var update = {
       name:             name,
       contact_name:     contact || null,
@@ -2271,13 +2493,18 @@ async function saveClientInfo() {
       phone:            phone  || null,
       tier:             tier,
       status:           status,
+      billing_type:     billingType,
       widget_active:    widgetActiveEl ? widgetActiveEl.checked : true,
       start_date:       start,
       renewal_date:     renewal,
       billing_notes:    billNotes || null,
       onboarding_notes: onbNotes  || null,
       last_contact:     lastCont,
-      next_followup:    nextFup
+      next_followup:    nextFup,
+      // Bespoke fields — only written for Tier 4, cleared for others
+      bespoke_setup_price:     tier === 4 ? bSetup     : null,
+      bespoke_recurring_price: tier === 4 ? bRecurring : null,
+      bespoke_trial_days:      tier === 4 ? bTrial     : 0,
     };
     var r = await _sb.from('clients').update(update).eq('id', _editingClientId);
     if (r.error) throw r.error;
@@ -2332,7 +2559,14 @@ async function saveClientInfo() {
       _editingRow.setAttribute('data-status', status);
     }
 
-    showToastAdmin('Client updated successfully', 'success');
+    showToastAdmin('Client info saved.', 'success');
+
+    // Handle Stripe billing changes based on old vs new tier
+    try {
+      var freshClient = (await _sb.from('clients').select('*').eq('id',_editingClientId).single()).data;
+      await handleTierBillingChange(freshClient, tier, bSetup, bRecurring, bTrial);
+    } catch(e) { console.warn('Billing update:', e); }
+
     closeModal('client-detail-modal');
     document.body.style.overflow = '';
     _editingRow = null;

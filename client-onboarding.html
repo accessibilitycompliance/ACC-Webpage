@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Activate Your ACC Account</title>
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{--navy:#0a1628;--accent:#4f8ef7;--teal:#38d9a9;--err:#f05f5f;--muted:#8a9bbf;--border:rgba(30,58,107,.6);--surface:rgba(13,31,60,.6);--font:'Segoe UI',system-ui,sans-serif}
+    body{font-family:var(--font);background:var(--navy);color:#e8edf8;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 24px 40px}
+    #skip-nav{position:absolute;top:-999px;left:0;z-index:99999;background:#4f8ef7;color:#fff;padding:10px 20px;border-radius:0 0 10px 0;font-weight:700;text-decoration:none;font-size:1rem}
+    #skip-nav:focus{top:0}
+    #main-nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(10,22,40,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-bottom:1px solid rgba(79,142,247,.12);height:68px;display:flex;align-items:center;padding:0 32px;gap:16px}
+    .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none;flex-shrink:0}
+    .nav-logo-img{width:38px;height:38px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(79,142,247,.25);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0}
+    .nav-logo-img img{width:34px;height:34px;object-fit:contain;display:block}
+    .nav-logo-text strong{font-size:.82rem;font-weight:800;color:#fff;white-space:nowrap}
+    .nav-back{margin-left:auto;color:#8a9bbf;text-decoration:none;font-size:.78rem;font-weight:600;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;gap:6px;transition:color .2s;white-space:nowrap;flex-shrink:0;padding-left:12px}
+    .nav-back:hover{color:#4f8ef7}
+    @media(max-width:480px){#main-nav{padding:0 12px;gap:8px}.nav-logo-text{display:none}}
+    .page-centre{flex:1;display:flex;align-items:center;justify-content:center;padding:32px 0;width:100%;margin-top:68px}
+    .card{background:rgba(13,31,60,.8);border:1px solid var(--border);border-radius:16px;padding:36px;width:100%;max-width:480px}
+    .logo{display:flex;align-items:center;gap:10px;margin-bottom:28px}
+    .logo-mark{width:36px;height:36px;background:linear-gradient(135deg,var(--accent),var(--teal));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+    .logo-text{font-size:1.1rem;font-weight:800;color:#fff}
+    h1{font-size:1.3rem;font-weight:800;color:#fff;margin-bottom:6px}
+    .subtitle{font-size:.85rem;color:var(--muted);margin-bottom:28px;line-height:1.6}
+    .step-indicator{display:flex;gap:8px;margin-bottom:28px}
+    .step{flex:1;height:3px;border-radius:99px;background:var(--border);transition:background .3s}
+    .step.active{background:var(--accent)}
+    .step.done{background:var(--teal)}
+    .fgroup{margin-bottom:16px}
+    label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
+    .finput{width:100%;background:rgba(10,22,40,.8);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-family:var(--font);font-size:.9rem;color:#e8edf8;outline:none;transition:border-color .2s}
+    .finput:focus{border-color:var(--accent)}
+    .finput::placeholder{color:rgba(138,155,191,.5)}
+    #stripe-card-el{background:rgba(10,22,40,.8);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+    .btn{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),var(--teal));color:var(--navy);font-family:var(--font);font-size:.95rem;font-weight:800;border:none;border-radius:10px;cursor:pointer;transition:opacity .2s}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .btn-ghost{background:none;border:1px solid var(--border);color:var(--muted);margin-top:10px}
+    .err{background:rgba(240,95,95,.1);border:1px solid rgba(240,95,95,.3);border-radius:8px;padding:10px 14px;font-size:.82rem;color:var(--err);display:none;margin-bottom:16px}
+    .security-note{font-size:.72rem;color:var(--muted);text-align:center;margin-top:14px;line-height:1.5}
+    .success-screen{display:none;text-align:center;padding:20px 0}
+    .success-icon{font-size:3.5rem;margin-bottom:16px}
+    .client-info{background:rgba(10,22,40,.6);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:24px;font-size:.82rem}
+    .client-info div{display:flex;justify-content:space-between;padding:4px 0;color:var(--muted)}
+    .client-info div span:last-child{color:#e8edf8;font-weight:600}
+    .pw-wrap{position:relative}
+    .pw-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:4px}
+  </style>
+</head>
+<body>
+
+<a href="#main-content" id="skip-nav" data-acc-skip="1">Skip to main content</a>
+
+<nav id="main-nav" role="navigation" aria-label="Main navigation">
+  <a href="index.html" class="nav-logo" aria-label="Accessibility Compliance Canada Inc. — Home">
+    <div class="nav-logo-img" aria-hidden="true">
+      <img src="data:image/png;base64,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" alt="ACC logo" width="34" height="34"/>
+    </div>
+    <div class="nav-logo-text">
+      <strong>Accessibility Compliance Canada Inc.&#x2122;</strong>
+    </div>
+  </a>
+</nav>
+
+<div class="page-centre">
+<div class="card">
+  <div class="step-indicator">
+    <div class="step active" id="step-1"></div>
+    <div class="step" id="step-2"></div>
+    <div class="step" id="step-3"></div>
+  </div>
+
+  <!-- Step 1: Verify identity -->
+  <div id="panel-1">
+    <h1>Activate Your Account</h1>
+    <p class="subtitle">Your ACC account has been set up. Enter your email to confirm your identity and set a password.</p>
+    <div id="err-1" class="err"></div>
+    <div class="fgroup">
+      <label>Your Email Address</label>
+      <input class="finput" type="email" id="ob-email" placeholder="you@company.ca" autocomplete="email"/>
+    </div>
+    <button class="btn" id="btn-1" onclick="verifyEmail()">Continue &#8594;</button>
+  </div>
+
+  <!-- Step 2: Set password -->
+  <div id="panel-2" style="display:none">
+    <h1>Set Your Password</h1>
+    <p class="subtitle">Create a password to log into your ACC dashboard.</p>
+    <div id="err-2" class="err"></div>
+    <div id="ob-client-info" class="client-info"></div>
+    <div class="fgroup">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input class="finput" type="password" id="ob-pw" placeholder="Min. 8 characters" autocomplete="new-password" minlength="8"/>
+        <button class="pw-eye" type="button" onclick="togglePw('ob-pw')">&#128065;</button>
+      </div>
+    </div>
+    <div class="fgroup">
+      <label>Confirm Password</label>
+      <div class="pw-wrap">
+        <input class="finput" type="password" id="ob-pw2" placeholder="Repeat password" autocomplete="new-password"/>
+        <button class="pw-eye" type="button" onclick="togglePw('ob-pw2')">&#128065;</button>
+      </div>
+    </div>
+    <button class="btn" id="btn-2" onclick="setPassword()">Set Password &#8594;</button>
+  </div>
+
+  <!-- Step 3: Card setup -->
+  <div id="panel-3" style="display:none">
+    <h1>Enter Payment Details</h1>
+    <p class="subtitle">Your card will be saved securely via Stripe for recurring billing. You won't be charged until your plan begins.</p>
+    <div id="err-3" class="err"></div>
+    <div class="fgroup">
+      <label>Cardholder Name</label>
+      <input class="finput" type="text" id="ob-card-name" placeholder="Jane Smith" autocomplete="cc-name"/>
+    </div>
+    <div class="fgroup">
+      <label>Card Details</label>
+      <div id="stripe-card-el"></div>
+    </div>
+    <div class="security-note">&#128274; Card details are sent directly to Stripe — ACC never sees raw card numbers.</div>
+    <button class="btn" id="btn-3" style="margin-top:20px" onclick="submitCard()">Activate Subscription &#8594;</button>
+  </div>
+
+  <!-- Success -->
+  <div class="success-screen" id="panel-success">
+    <div class="success-icon">&#127881;</div>
+    <h1 style="margin-bottom:10px">You're all set!</h1>
+    <p class="subtitle">Your account is active and your payment method is saved. Sign in to access your dashboard.</p>
+    <a href="https://accessibilitycompliance.ca/dashboard.html" class="btn" style="display:block;text-align:center;text-decoration:none;margin-top:24px">Go to Dashboard &#8594;</a>
+  </div>
+</div>
+</div><!-- /page-centre -->
+
+<footer style="margin-top:24px;text-align:center;font-size:.72rem;color:rgba(138,155,191,.6);line-height:2">
+  <div>ACC Accessibility Compliance Canada Inc. &nbsp;&middot;&nbsp; 2150 Winston Park Dr, Unit 203, Oakville, ON</div>
+  <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:4px">
+    <a href="https://accessibilitycompliance.ca/payment.html#msa" target="_blank" rel="noopener" style="color:rgba(138,155,191,.7);text-decoration:none" onmouseover="this.style.color='#4f8ef7'" onmouseout="this.style.color='rgba(138,155,191,.7)'">Master Service Agreement</a>
+    <span style="color:rgba(138,155,191,.3)">|</span>
+    <a href="https://accessibilitycompliance.ca/payment.html#privacy" target="_blank" rel="noopener" style="color:rgba(138,155,191,.7);text-decoration:none" onmouseover="this.style.color='#4f8ef7'" onmouseout="this.style.color='rgba(138,155,191,.7)'">Privacy Policy</a>
+    <span style="color:rgba(138,155,191,.3)">|</span>
+    <a href="mailto:partner@accessibilitycompliance.ca" style="color:rgba(138,155,191,.7);text-decoration:none" onmouseover="this.style.color='#4f8ef7'" onmouseout="this.style.color='rgba(138,155,191,.7)'">Contact Us</a>
+  </div>
+</footer>
+
+<script>
+var ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
+var SB_URL = 'https://wfyzvmfvlukawidowuym.supabase.co';
+var STRIPE_PK = 'pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ';
+
+var _client = null;
+var _stripe = null;
+var _cardEl = null;
+
+// Pre-fill email from URL param
+(function() {
+  var p = new URLSearchParams(window.location.search);
+  var em = p.get('email');
+  if (em) document.getElementById('ob-email').value = decodeURIComponent(em);
+})();
+
+function showErr(panel, msg) {
+  var el = document.getElementById('err-' + panel);
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+function hideErr(panel) {
+  var el = document.getElementById('err-' + panel); if (el) el.style.display = 'none';
+}
+function setStep(n) {
+  [1,2,3].forEach(function(i) {
+    document.getElementById('panel-'+i).style.display = i===n ? 'block' : 'none';
+    var s = document.getElementById('step-'+i);
+    if (s) s.className = 'step ' + (i < n ? 'done' : i===n ? 'active' : '');
+  });
+}
+function togglePw(id) {
+  var el = document.getElementById(id);
+  if (el) el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+// Step 1: Verify email matches a client record
+async function verifyEmail() {
+  var email = (document.getElementById('ob-email')||{}).value.trim().toLowerCase();
+  hideErr(1);
+  if (!email) { showErr(1, 'Please enter your email address.'); return; }
+  var btn = document.getElementById('btn-1');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    var r = await fetch(SB_URL + '/rest/v1/clients?email=eq.' + encodeURIComponent(email) + '&select=id,client_code,name,tier,billing_cycle,stripe_customer_id,stripe_subscription_id&limit=1', {
+      headers: { 'apikey': ANON, 'Authorization': 'Bearer ' + ANON }
+    });
+    var rows = await r.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      showErr(1, 'No account found for that email. Please check and try again, or contact partner@accessibilitycompliance.ca');
+      btn.disabled = false; btn.textContent = 'Continue →'; return;
+    }
+    _client = rows[0];
+    _client.email = email;
+
+    // Check if auth user already exists (i.e. password already set)
+    // We'll try to sign them up — if already exists, tell them to use login page
+    document.getElementById('ob-client-info').innerHTML =
+      '<div><span>Account</span><span>' + esc(_client.name||'') + '</span></div>' +
+      '<div><span>Client Code</span><span>' + esc(_client.client_code||'') + '</span></div>' +
+      '<div><span>Email</span><span>' + esc(email) + '</span></div>';
+
+    setStep(2);
+  } catch(e) {
+    showErr(1, 'Could not verify email: ' + (e.message||e));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Continue →';
+  }
+}
+
+// Step 2: Create auth account with password
+async function setPassword() {
+  var pw  = (document.getElementById('ob-pw') ||{}).value;
+  var pw2 = (document.getElementById('ob-pw2')||{}).value;
+  hideErr(2);
+  if (pw.length < 8)  { showErr(2, 'Password must be at least 8 characters.'); return; }
+  if (pw !== pw2)     { showErr(2, 'Passwords do not match.'); return; }
+  var btn = document.getElementById('btn-2');
+  btn.disabled = true; btn.textContent = 'Creating account…';
+  try {
+    // Call create-client in "set-password-only" mode —
+    // it detects the client already exists and only creates the auth user
+    var r = await fetch(SB_URL + '/functions/v1/create-client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': 'Bearer ' + ANON },
+      body: JSON.stringify({
+        email:         _client.email,
+        password:      pw,
+        firstName:     _client.name || '',
+        lastName:      '',
+        company:       _client.name || '',
+        setPasswordOnly: true  // flag: only create auth user, client row already exists
+      })
+    });
+    var res = await r.json();
+    if (res.error && res.error.includes('already exists')) {
+      // Auth user already exists — they already set a password
+      showErr(2, 'An account with this email already has a password set. Please sign in at the dashboard login page.');
+      btn.disabled = false; btn.textContent = 'Set Password →'; return;
+    }
+    if (res.error) throw new Error(res.error);
+
+    // Move to card setup
+    setStep(3);
+    initStripeCard();
+  } catch(e) {
+    showErr(2, e.message || 'Could not create account. Please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Set Password →';
+  }
+}
+
+// Stripe card setup
+function initStripeCard() {
+  if (_stripe) return;
+  _stripe = Stripe(STRIPE_PK);
+  var elements = _stripe.elements({
+    appearance: {
+      theme: 'night',
+      variables: { colorPrimary: '#4f8ef7', colorBackground: 'rgba(10,22,40,.8)', colorText: '#e8edf8', colorDanger: '#f05f5f', borderRadius: '8px' }
+    }
+  });
+  _cardEl = elements.create('card', { hidePostalCode: true });
+  _cardEl.mount('#stripe-card-el');
+  _cardEl.on('change', function(e) {
+    var el = document.getElementById('err-3');
+    if (el) { el.textContent = e.error ? e.error.message : ''; el.style.display = e.error ? 'block' : 'none'; }
+  });
+}
+
+// Step 3: Confirm card and activate subscription
+async function submitCard() {
+  var cardName = (document.getElementById('ob-card-name')||{}).value.trim();
+  hideErr(3);
+  if (!cardName) { showErr(3, 'Please enter the cardholder name.'); return; }
+  var btn = document.getElementById('btn-3');
+  btn.disabled = true; btn.textContent = 'Validating card…';
+  try {
+    // Get SetupIntent from stripe-checkout
+    var siRes = await fetch(SB_URL + '/functions/v1/stripe-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': 'Bearer ' + ANON },
+      body: JSON.stringify({
+        email:        _client.email,
+        company:      _client.name,
+        tier:         _client.tier,
+        billingCycle: _client.billing_cycle || 'monthly',
+        amount:       _client.tier === 1 ? 69 : _client.tier === 2 ? 199 : 0,
+        currency:     'cad'
+      })
+    });
+    var siData = await siRes.json();
+    if (siData.error) throw new Error(siData.error);
+
+    // Confirm card
+    btn.textContent = 'Confirming card…';
+    var result = await _stripe.confirmCardSetup(siData.clientSecret, {
+      payment_method: { card: _cardEl, billing_details: { name: cardName, email: _client.email } }
+    });
+    if (result.error) throw new Error(result.error.message);
+
+    var pmId = result.setupIntent.payment_method;
+
+    // Activate subscription
+    btn.textContent = 'Activating subscription…';
+    var actRes = await fetch(SB_URL + '/functions/v1/activate-subscription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': 'Bearer ' + ANON },
+      body: JSON.stringify({
+        client_id:         _client.id,
+        payment_method_id: pmId,
+        price_id:          siData.priceId,
+        customer_id:       siData.customerId,
+        billing_type:      'recurring'
+      })
+    });
+    var actData = await actRes.json();
+    if (actData.error) throw new Error(actData.error);
+
+    // Show success
+    [1,2,3].forEach(function(i){ document.getElementById('panel-'+i).style.display='none'; document.getElementById('step-'+i).className='step done'; });
+    document.getElementById('panel-success').style.display = 'block';
+
+    // Non-blocking: generate welcome email
+    fetch(SB_URL + '/functions/v1/send-welcome-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': 'Bearer ' + ANON },
+      body: JSON.stringify({ client_id: _client.id })
+    }).catch(function(){});
+
+  } catch(e) {
+    showErr(3, e.message || 'Card activation failed. Please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Activate Subscription →';
+  }
+}
+
+function esc(s) { var d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
+</script>
+</body>
+</html>
