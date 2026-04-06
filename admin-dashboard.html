@@ -783,11 +783,15 @@ Scores show <em>site today → with widget applied</em>.
                 <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
               <div class="fgroup" style="margin:0"><label>Recurring Price ($)</label>
                 <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
-              <div class="fgroup" style="margin:0"><label>Recurring Cycle</label>
-                <select class="finput" id="ce-bespoke-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select></div>
             </div>
             <div style="font-size:.68rem;color:#8a9bbf;margin-top:8px">&#9432; Save with a setup price to auto-generate an invoice. Set recurring price to start subscription billing. Both optional if on trial.</div>
           </div>
+        </div>
+        <div class="fgroup"><label>Billing Cycle</label>
+          <select class="finput" id="ce-cycle">
+            <option value="monthly" selected>Monthly</option>
+            <option value="annual">Annual (yearly)</option>
+          </select>
         </div>
         <div class="fgroup"><label>Status</label>
           <select class="finput" id="ce-status" onchange="onClientStatusChange(this)">
@@ -829,13 +833,9 @@ Scores show <em>site today → with widget applied</em>.
           <span style="font-size:.68rem;color:#8a9bbf"> — copies link &amp; emails client to enter card details</span>
         </span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="fgroup"><label>Billing Cycle</label>
-          <select class="finput" id="ce-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select>
-        </div>
-        
-        <div class="fgroup"><label style="color:#8a9bbf">Rate</label><div style="font-size:.78rem;color:#8a9bbf;padding:8px 0">Set via tier selection above. Use Tier 4 Bespoke for custom pricing.</div></div>
-        <div class="fgroup" style="grid-column:1/-1"><label>Custom Invoice Notes</label><textarea class="finput" id="ce-inv-notes" rows="2" placeholder="Notes that appear on invoices"></textarea></div>
+      <div style="margin-bottom:16px">
+        <div class="fgroup"><label style="color:#8a9bbf">Rate</label><div style="font-size:.78rem;color:#8a9bbf;padding:8px 0">Set via Tier &amp; Billing Cycle in the Info tab above.</div></div>
+        <div class="fgroup"><label>Custom Invoice Notes</label><textarea class="finput" id="ce-inv-notes" rows="2" placeholder="Notes that appear on invoices"></textarea></div>
       </div>
       <h3 style="font-size:.88rem;margin-bottom:6px">&#128179; Card on File</h3>
       <p style="font-size:.72rem;color:#8a9bbf;margin-bottom:10px">Auto-captured from Stripe. Update via the client's dashboard or Stripe Dashboard.</p>
@@ -1624,7 +1624,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
         var ir = await fetch(SUPABASE_URL + '/functions/v1/create-stripe-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-          body: JSON.stringify({ client_id: client.id, amount_cents: Math.round(bSetup * 100), description: 'Tier 4 Bespoke — Setup Fee', due_days: 14 })
+          body: JSON.stringify({ client_id: client.id, amount: bSetup, invoiceSuffix: 'setup', initialStatus: 'pending' })
         });
         var ires = await ir.json();
         if (ires.error) showToastAdmin('Setup invoice warning: ' + ires.error, 'warn');
@@ -2197,7 +2197,17 @@ async function addClient() {
     });
     if (tierEl) tierEl.value = '1';
 
-    showToastAdmin('Client ' + name + ' created (' + code + ')', 'success');
+    // Generate pending invoice for new admin-created client (no card required yet)
+    var ncTierVal = parseInt(tier) || 1;
+    if (ncTierVal !== 3) {  // Tier 3 = one-time/enterprise — invoice manually
+      fetch(SUPABASE_URL + '/functions/v1/generate-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
+        body: JSON.stringify({ client_id: r.data.id, initialStatus: 'pending', skipEmail: true })
+      }).catch(function() {});
+    }
+
+    showToastAdmin('Client ' + name + ' created (' + code + ') — pending invoice generated.', 'success');
 
     // Queue baseline report generation if domain provided (non-blocking)
     if (domain) {
@@ -2308,7 +2318,7 @@ async function openClientEditor(btn) {
     _setNum('ce-bespoke-setup',     cTier === 4 ? c.bespoke_setup_price     : '');
     _setNum('ce-bespoke-recurring', cTier === 4 ? c.bespoke_recurring_price : '');
     var bCycleEl = document.getElementById('ce-bespoke-cycle');
-    // bespoke_billing_cycle not yet in schema — skip load; cycle defaults to monthly
+    // bespoke cycle is now stored in billing_cycle column — loaded via ce-cycle
     var isTrial = cTier === 4 && (c.bespoke_trial_days || 0) > 0;
     var trialChk = document.getElementById('ce-bespoke-trial-chk');
     if (trialChk) { trialChk.checked = isTrial; toggleBespokeTrialFields('ce'); }
@@ -2346,9 +2356,21 @@ async function openClientEditor(btn) {
     // ── Billing tab ──
     f('ce-inv-notes',    c.billing_notes  || '');
     f('ce-rate',         c.monthly_rate != null ? c.monthly_rate : (c.tier==2 ? 199 : c.tier==3 ? '' : 69));
-    f('ce-card-last4',   c.card_last4 || c.payment_method_last4 || '');
-    f('ce-card-expiry',  c.card_expiry    || '');
-    f('ce-card-name',    c.card_name      || '');
+    // Load card: card_last4 set by activate-subscription; fallback to billing table
+    (async function() {
+      var last4Show = c.card_last4 || '';
+      if (!last4Show) {
+        try {
+          var billingRow = await _sb.from('billing').select('payment_method_last4')
+            .eq('client_id', c.id).not('payment_method_last4', 'is', null)
+            .order('created_at', {ascending: false}).limit(1);
+          if (billingRow.data && billingRow.data.length) last4Show = billingRow.data[0].payment_method_last4 || '';
+        } catch(_) {}
+      }
+      f('ce-card-last4',  last4Show);
+      f('ce-card-expiry', c.card_expiry || '');
+      f('ce-card-name',   c.card_name   || '');
+    })();
     // Load billing history
     (async function() {
       var bh = document.getElementById('admin-billing-history');
@@ -2487,7 +2509,7 @@ async function saveClientInfo() {
     var bSetup     = parseFloat((document.getElementById('ce-bespoke-setup')||{value:'0'}).value)||0;
     var bRecurring = parseFloat((document.getElementById('ce-bespoke-recurring')||{value:'0'}).value)||0;
     var bTrial     = parseInt((document.getElementById('ce-bespoke-trial')||{value:'0'}).value)||0;
-    var bCycle     = (document.getElementById('ce-bespoke-cycle')||{value:'monthly'}).value || 'monthly';
+    var bCycle     = (document.getElementById('ce-cycle')||{value:'monthly'}).value || 'monthly';
     var billingType = tier === 3 ? 'one_time' : 'recurring';
 
     var update = {
@@ -2682,11 +2704,11 @@ async function saveBilling() {
   var btn = document.querySelector('#ctab-panel-billing .btn-primary');
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
   try {
+    // Billing cycle is now on the info tab — read from ce-cycle (still in DOM)
     var cycle = document.getElementById('ce-cycle');
     var inv   = (document.getElementById('ce-inv-notes')||{}).value||'';
-    var pay   = document.getElementById('ce-payment');
     var rate  = parseFloat((document.getElementById('ce-rate')||{}).value||0) || null;
-    var newCycle = cycle ? cycle.options[cycle.selectedIndex].text.toLowerCase() : 'monthly';
+    var newCycle = cycle ? cycle.options[cycle.selectedIndex].value : 'monthly';
     // Billing cycle change: keep existing renewal_date — change takes effect at next renewal.
     // The client already paid through to the current renewal date; that doesn't change.
     var clientRow = (await _sb.from('clients').select('renewal_date').eq('id',_editingClientId).single()).data;

@@ -2172,23 +2172,15 @@ async function saveCard() {
   if (errEl) errEl.style.display = 'none';
 
   try {
-    // Step 1: Create SetupIntent via stripe-checkout edge function
-    var siRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/stripe-checkout', {
+    // Step 1: Get SetupIntent client_secret via update-payment-method
+    var siRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-payment-method', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
-      body: JSON.stringify({
-        email:        _clientData.email,
-        company:      _clientData.name,
-        tier:         _clientData.tier,
-        billingCycle: _clientData.billing_cycle || 'monthly',
-        // Use actual tier price (not 0) — Stripe rejects $0 recurring prices
-        amount:       _clientData.tier === 1 ? 69 : _clientData.tier === 2 ? 199 : 69,
-        currency:     'cad',
-      })
+      body: JSON.stringify({ client_id: _clientData.id, action: 'get_setup_intent' })
     });
     var siText = await siRes.text();
-    if (!siRes.ok) { var siErr; try { siErr = JSON.parse(siText); } catch(_) { siErr = {}; } throw new Error(siErr.error || 'SetupIntent failed (' + siRes.status + '): ' + siText.slice(0,100)); }
-    var siData; try { siData = JSON.parse(siText); } catch(_) { throw new Error('Invalid response from server: ' + siText.slice(0,80)); }
+    if (!siRes.ok) { var siErr; try { siErr = JSON.parse(siText); } catch(_) { siErr = {}; } throw new Error(siErr.error || 'Could not start card update (' + siRes.status + '). Please try again.'); }
+    var siData; try { siData = JSON.parse(siText); } catch(_) { throw new Error('Server error. Please try again.'); }
     if (siData.error) throw new Error(siData.error);
 
     // Step 2: Confirm new card via Stripe Elements
