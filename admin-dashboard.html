@@ -762,6 +762,29 @@ Scores show <em>site today → with widget applied</em>.
             <option value="4">Tier 4 — Bespoke (Custom recurring)</option>
           </select>
         </div>
+        <!-- Bespoke pricing fields — shown inline when Tier 4 selected -->
+        <div id="ce-bespoke-fields" style="display:none;grid-column:1/-1;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:14px">
+          <div style="font-size:.75rem;color:#4f8ef7;font-weight:700;margin-bottom:10px">&#9881; Bespoke Pricing</div>
+          <div style="margin-bottom:10px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:pointer">
+              <input type="checkbox" id="ce-bespoke-trial-chk" onchange="toggleBespokeTrialFields('ce')">
+              <span>&#9200; Currently on free trial (no billing until trial ends)</span>
+            </label>
+            <div id="ce-trial-days-row" style="display:none;margin-top:8px">
+              <label style="font-size:.75rem;color:#8a9bbf">Trial length (days)</label>
+              <input class="finput" id="ce-bespoke-trial" type="number" min="1" placeholder="e.g. 30" style="margin-top:4px">
+            </div>
+          </div>
+          <div id="ce-bespoke-pricing-fields">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
+                <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
+              <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
+                <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+            </div>
+            <div style="font-size:.68rem;color:#8a9bbf;margin-top:8px">&#9432; Save with a setup price to auto-generate an invoice. Set recurring price to start subscription billing. Both optional if on trial.</div>
+          </div>
+        </div>
         <div class="fgroup"><label>Status</label>
           <select class="finput" id="ce-status" onchange="onClientStatusChange(this)">
             <option value="active" selected>Active</option>
@@ -801,29 +824,6 @@ Scores show <em>site today → with widget applied</em>.
           <button class="btn-sm btn-ghost" style="font-size:.72rem;padding:2px 8px" onclick="sendSetupLink()" title="Send payment page link to client so they can enter card details">&#128279; Send Card Setup Link</button>
           <span style="font-size:.68rem;color:#8a9bbf"> — copies link &amp; emails client to enter card details</span>
         </span>
-      </div>
-      <!-- Bespoke pricing fields (Tier 4) -->
-      <div id="ce-bespoke-fields" style="display:none;background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:14px;margin-bottom:12px">
-        <div style="font-size:.75rem;color:#4f8ef7;font-weight:700;margin-bottom:10px">&#9881; Bespoke Pricing</div>
-        <div style="margin-bottom:10px">
-          <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;cursor:pointer">
-            <input type="checkbox" id="ce-bespoke-trial-chk" onchange="toggleBespokeTrialFields('ce')">
-            <span>&#9200; Currently on free trial (pricing locked until trial ends)</span>
-          </label>
-          <div id="ce-trial-days-row" style="display:none;margin-top:8px">
-            <label style="font-size:.75rem;color:#8a9bbf">Trial length (days)</label>
-            <input class="finput" id="ce-bespoke-trial" type="number" min="1" placeholder="e.g. 30" style="margin-top:4px">
-          </div>
-        </div>
-        <div id="ce-bespoke-pricing-fields">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
-              <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
-            <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
-              <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
-          </div>
-          <div style="font-size:.68rem;color:#8a9bbf;margin-top:8px">Saving with a setup price will auto-generate a setup invoice. Saving a recurring price starts the billing cycle.</div>
-        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div class="fgroup"><label>Billing Cycle</label>
@@ -1539,7 +1539,9 @@ async function sendSetupLink() {
             + '</div>'
         })
       });
-    } catch(_) {} // email failure is non-fatal
+    } catch(emailErr) {
+      showToastAdmin('Email error: ' + (emailErr.message || emailErr), 'warn');
+    }
 
     showToastAdmin('Setup link copied to clipboard & emailed to ' + cl.email, 'success');
 
@@ -2285,7 +2287,10 @@ async function openClientEditor(btn) {
     f('ce-billing-note', c.billing_notes || '');
 
     var tierSel = document.getElementById('ce-tier');
-    if (tierSel) tierSel.value = c.tier || '1';
+    if (tierSel) {
+      tierSel.value = c.tier || '1';
+      tierSel.dataset.prevTier = String(c.tier || '1');  // for tier-change detection
+    }
     var cTier = parseInt(c.tier) || 1;
 
     // Reset + populate bespoke fields from this client's DB values
@@ -2331,7 +2336,7 @@ async function openClientEditor(btn) {
     // ── Billing tab ──
     f('ce-inv-notes',    c.billing_notes  || '');
     f('ce-rate',         c.monthly_rate != null ? c.monthly_rate : (c.tier==2 ? 199 : c.tier==3 ? '' : 69));
-    f('ce-card-last4',   c.card_last4     || '');
+    f('ce-card-last4',   c.card_last4 || c.payment_method_last4 || '');
     f('ce-card-expiry',  c.card_expiry    || '');
     f('ce-card-name',    c.card_name      || '');
     // Load billing history
@@ -2550,11 +2555,14 @@ async function saveClientInfo() {
 
     showToastAdmin('Client info saved.', 'success');
 
-    // Handle Stripe billing changes based on old vs new tier
-    try {
-      var freshClient = (await _sb.from('clients').select('*').eq('id',_editingClientId).single()).data;
-      await handleTierBillingChange(freshClient, tier, bSetup, bRecurring, bTrial);
-    } catch(e) { console.warn('Billing update:', e); }
+    // Only trigger billing actions if tier actually changed
+    var prevTierVal = parseInt((document.getElementById('ce-tier')||{}).dataset.prevTier || '0');
+    if (prevTierVal && prevTierVal !== tier) {
+      try {
+        var freshClient = (await _sb.from('clients').select('*').eq('id',_editingClientId).single()).data;
+        await handleTierBillingChange(freshClient, tier, bSetup, bRecurring, bTrial);
+      } catch(e) { console.warn('Billing update:', e); }
+    }
 
     closeModal('client-detail-modal');
     document.body.style.overflow = '';

@@ -999,11 +999,18 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
         <div class="fgroup"><label for="new-card-name">Cardholder Name</label>
           <input class="finput" type="text" id="new-card-name" placeholder="Jane Smith" autocomplete="cc-name" style="width:100%"/>
         </div>
-        <div class="fgroup"><label>Card Details</label>
-          <!-- Stripe Elements mounts here -->
-          <div id="stripe-card-element" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:14px 16px;font-size:.88rem"></div>
-          <div id="stripe-card-error" role="alert" style="color:#f05f5f;font-size:.78rem;margin-top:6px;display:none"></div>
+        <div class="fgroup"><label>Card Number</label>
+          <div id="stripe-card-number" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:13px 14px;min-height:44px"></div>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="fgroup"><label>Expiry</label>
+            <div id="stripe-card-expiry" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:13px 14px;min-height:44px"></div>
+          </div>
+          <div class="fgroup"><label>CVC</label>
+            <div id="stripe-card-cvc" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:13px 14px;min-height:44px"></div>
+          </div>
+        </div>
+        <div id="stripe-card-error" role="alert" style="color:#f05f5f;font-size:.78rem;margin-top:4px;display:none"></div>
         <div style="background:rgba(79,142,247,.06);border:1px solid rgba(79,142,247,.15);border-radius:8px;padding:10px 14px;margin:4px 0 16px;font-size:.75rem;color:#8a9bbf">
           &#128274; Card details go directly to Stripe — ACC never sees or stores raw card numbers.
         </div>
@@ -2104,41 +2111,49 @@ var TEMPLATE_URLS = {
 var _cardUpdateStripe = null;
 var _cardUpdateElement = null;
 
-// Called every time the Update Card modal opens.
-// Unmounts any previous element and mounts fresh — required because
-// Stripe Elements cannot measure itself when the container is display:none.
+// Individual Stripe card elements — more reliable in modals than the combined 'card' element
+var _cardNumEl = null, _cardExpEl = null, _cardCvcEl = null;
+
 function initStripeCardUpdate() {
-  var container = document.getElementById('stripe-card-element');
-  if (!container) return;
+  var numContainer = document.getElementById('stripe-card-number');
+  if (!numContainer) return;
   if (typeof Stripe === 'undefined') {
-    container.innerHTML = '<div style="color:#f05f5f;font-size:.8rem">Stripe failed to load. Please refresh the page.</div>';
+    numContainer.innerHTML = '<span style="color:#f05f5f;font-size:.8rem">Stripe failed to load. Refresh the page.</span>';
     return;
   }
-  // Unmount previous element if any
-  if (_cardUpdateElement) {
-    try { _cardUpdateElement.unmount(); } catch(_) {}
-    _cardUpdateElement = null;
-  }
-  container.innerHTML = ''; // clear placeholder
+  // Unmount previous elements
+  ['_cardNumEl','_cardExpEl','_cardCvcEl'].forEach(function(k) {
+    if (window[k]) { try { window[k].unmount(); } catch(_) {} window[k] = null; }
+  });
+  _cardUpdateElement = null; // reset for saveCard() check
+  ['stripe-card-number','stripe-card-expiry','stripe-card-cvc'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.innerHTML = '';
+  });
   try {
     if (!_cardUpdateStripe) {
       _cardUpdateStripe = Stripe('pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ');
     }
-    var elements = _cardUpdateStripe.elements({
-      appearance: {
-        theme: 'night',
-        variables: { colorPrimary: '#4f8ef7', colorBackground: 'rgba(10,22,40,.8)', colorText: '#e8edf8', colorDanger: '#f05f5f', fontFamily: 'system-ui, sans-serif', borderRadius: '8px' }
-      }
-    });
-    _cardUpdateElement = elements.create('card', { hidePostalCode: true });
-    _cardUpdateElement.mount(container);
-    _cardUpdateElement.on('change', function(e) {
+    var style = { base: { color: '#e8edf8', fontFamily: 'system-ui, sans-serif', fontSize: '15px', '::placeholder': { color: 'rgba(138,155,191,.5)' } }, invalid: { color: '#f05f5f' } };
+    var elems = _cardUpdateStripe.elements();
+    _cardNumEl = elems.create('cardNumber', { style: style, showIcon: true });
+    _cardExpEl = elems.create('cardExpiry', { style: style });
+    _cardCvcEl = elems.create('cardCvc',    { style: style });
+    _cardNumEl.mount('#stripe-card-number');
+    _cardExpEl.mount('#stripe-card-expiry');
+    _cardCvcEl.mount('#stripe-card-cvc');
+    _cardUpdateElement = _cardNumEl; // saveCard() uses this to check readiness
+    var handleChange = function(e) {
       var errEl = document.getElementById('stripe-card-error');
-      if (errEl) { errEl.textContent = e.error ? e.error.message : ''; errEl.style.display = e.error ? 'block' : 'none'; }
-    });
+      if (errEl && e.error) { errEl.textContent = e.error.message; errEl.style.display = 'block'; }
+      else if (errEl && !e.error) { errEl.style.display = 'none'; }
+    };
+    _cardNumEl.on('change', handleChange);
+    _cardExpEl.on('change', handleChange);
+    _cardCvcEl.on('change', handleChange);
   } catch(e) {
     console.warn('Stripe card init failed:', e);
-    if (container) container.innerHTML = '<div style="color:#f05f5f;font-size:.8rem">Could not load card input: ' + e.message + '</div>';
+    var nb = document.getElementById('stripe-card-number');
+    if (nb) nb.innerHTML = '<span style="color:#f05f5f;font-size:.8rem">Could not load: ' + e.message + '</span>';
   }
 }
 
@@ -2171,7 +2186,7 @@ async function saveCard() {
     // Step 2: Confirm new card via Stripe Elements
     var result = await _cardUpdateStripe.confirmCardSetup(siData.clientSecret, {
       payment_method: {
-        card: _cardUpdateElement,
+        card: _cardNumEl,
         billing_details: { name: name, email: _clientData.email }
       }
     });

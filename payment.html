@@ -1052,16 +1052,10 @@ async function submitPayment(){
     company:document.getElementById('f-company').value.trim(),
     domain:document.getElementById('f-website').value.trim(),
     phone:(document.getElementById('f-phone')||{value:''}).value.trim(),
-    billingAddr:(
-      (document.getElementById('f-bill-street')||{value:''}).value.trim() + ', ' +
-      (document.getElementById('f-bill-city')||{value:''}).value.trim() + ', ' +
-      (document.getElementById('f-bill-province')||{value:'ON'}).value + ' ' +
-      (document.getElementById('f-bill-postal')||{value:''}).value.trim().toUpperCase()
-    ),
+    billingAddr:(document.getElementById('f-bill-street')||{value:''}).value.trim(),
     billingCity:(document.getElementById('f-bill-city')||{value:''}).value.trim(),
     billingProvince:(document.getElementById('f-bill-province')||{value:'ON'}).value,
     billingPostal:(document.getElementById('f-bill-postal')||{value:''}).value.trim().toUpperCase(),
-    billingCountry:(document.getElementById('f-bill-country')||{value:'CA'}).value,
     password:document.getElementById('f-password').value,
     discountCode:document.getElementById('f-discount')?document.getElementById('f-discount').value.trim().toUpperCase():'',
     discountPct:discountPct,
@@ -1103,7 +1097,7 @@ async function submitPayment(){
             city:        payload.billingCity    || '',
             state:       payload.billingProvince || 'ON',
             postal_code: payload.billingPostal  || '',
-            country:     payload.billingCountry || 'CA'
+            country:     'CA'
           }
         }
       }
@@ -1251,6 +1245,11 @@ async function createAccount(p, stripeCtx){
         billingType:        billingType,
         stripeCustomerId:   stripeCtx.customerId   || null,
         stripePromoCodeId:  stripeCtx.promoCodeId  || null,
+        // Billing address
+        billingAddr:        p.billingAddr     || null,
+        billingCity:        p.billingCity     || null,
+        billingProvince:    p.billingProvince || null,
+        billingPostal:      p.billingPostal   || null,
         termsAccepted:      p.termsAccepted    || false,
         marketingConsent:   p.marketingConsent || false,
         msaAccepted:        p.msaAccepted      || false,
