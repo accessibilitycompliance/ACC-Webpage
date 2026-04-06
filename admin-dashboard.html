@@ -783,7 +783,7 @@ Scores show <em>site today → with widget applied</em>.
           </div>
         </div>
         <div class="fgroup"><label>Start Date</label><input class="finput" type="date" id="ce-start" value="2026-01-10" onchange="ceAutoFillRenewal()"></div>
-        <div class="fgroup"><label>Next Renewal</label><input class="finput" type="date" id="ce-renewal" value="2026-04-10"></div>
+        <div class="fgroup"><label>Next Renewal <span style="font-size:.65rem;color:#8a9bbf">(auto-calculated)</span></label><input class="finput" type="date" id="ce-renewal" readonly tabindex="-1" style="opacity:.6;cursor:default" title="Recalculated when billing cycle is saved"></div>
         <div class="fgroup" style="grid-column:1/-1"><label>Billing Notes</label><input class="finput" id="ce-billing-note" placeholder="e.g. invoice by email, net 30"></div>
       </div>
       <div class="btn-row" style="margin-top:12px">
@@ -829,18 +829,16 @@ Scores show <em>site today → with widget applied</em>.
         <div class="fgroup"><label>Billing Cycle</label>
           <select class="finput" id="ce-cycle" onchange="ceAutoFillRenewal()"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select>
         </div>
-        <div class="fgroup"><label>Payment Method</label>
-          <select class="finput" id="ce-payment"><option selected>Stripe</option><option>Invoice</option><option>Cheque</option></select>
-        </div>
         
         <div class="fgroup"><label style="color:#8a9bbf">Rate</label><div style="font-size:.78rem;color:#8a9bbf;padding:8px 0">Set via tier selection above. Use Tier 4 Bespoke for custom pricing.</div></div>
         <div class="fgroup" style="grid-column:1/-1"><label>Custom Invoice Notes</label><textarea class="finput" id="ce-inv-notes" rows="2" placeholder="Notes that appear on invoices"></textarea></div>
       </div>
-      <h3 style="font-size:.88rem;margin-bottom:10px">&#128179; Card on File</h3>
+      <h3 style="font-size:.88rem;margin-bottom:6px">&#128179; Card on File</h3>
+      <p style="font-size:.72rem;color:#8a9bbf;margin-bottom:10px">Auto-captured from Stripe. Update via the client's dashboard or Stripe Dashboard.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="fgroup"><label>Last 4 Digits</label><input class="finput" id="ce-card-last4" placeholder="e.g. 4242" maxlength="4" style="font-family:var(--mono)"></div>
-        <div class="fgroup"><label>Expiry (MM/YY)</label><input class="finput" id="ce-card-expiry" placeholder="e.g. 08/28"></div>
-        <div class="fgroup" style="grid-column:1/-1"><label>Cardholder Name</label><input class="finput" id="ce-card-name" placeholder="As shown on card"></div>
+        <div class="fgroup"><label>Last 4 Digits</label><input class="finput" id="ce-card-last4" placeholder="—" maxlength="4" style="font-family:var(--mono)" readonly tabindex="-1" style="opacity:.6;cursor:default"></div>
+        <div class="fgroup"><label>Expiry (MM/YY)</label><input class="finput" id="ce-card-expiry" placeholder="—" readonly tabindex="-1" style="opacity:.6;cursor:default"></div>
+        <div class="fgroup" style="grid-column:1/-1"><label>Cardholder Name</label><input class="finput" id="ce-card-name" placeholder="—" readonly tabindex="-1" style="opacity:.6;cursor:default"></div>
       </div>
       <h3 style="font-size:.88rem;margin-bottom:10px">&#128203; Payment History</h3>
       <div id="admin-billing-history" style="font-size:.8rem;color:#8a9bbf">Loading…</div>
@@ -1588,7 +1586,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
       });
       var cres = await cr.json();
       if (cres.error) showToastAdmin('Stripe cancel warning: ' + cres.error, 'warn');
-      else showToastAdmin('Subscription cancelled. Tier 3 active.', 'success');
+      else showToastAdmin('Stripe subscription cancelled. Client access continues until renewal date.', 'success');
     } catch(e) { showToastAdmin('Could not cancel subscription: ' + (e.message||e), 'error'); }
     return;
   }
@@ -1598,7 +1596,15 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
     var actions = [];
     if (bSetup > 0)     actions.push('Setup invoice: $' + bSetup.toFixed(2) + ' + HST');
     if (bRecurring > 0) actions.push((hasSub ? 'Update' : 'Create') + ' recurring: $' + bRecurring.toFixed(2) + '/mo');
-    if (!actions.length) { showToastAdmin('Tier 4 saved. No pricing set — no billing action taken.', 'info'); return; }
+    if (!actions.length) {
+      var trialChk = document.getElementById('ce-bespoke-trial-chk');
+      if (!trialChk || !trialChk.checked) {
+        showToastAdmin('\u26A0 Tier 4: Please either check \u201CStart with free trial\u201D or enter Setup/Recurring pricing.', 'warn');
+        return;
+      }
+      showToastAdmin('\u23F1 Trial started. Edit client to add pricing when trial ends.', 'info');
+      return;
+    }
     if (!confirm('Bespoke billing:\n\n' + actions.join('\n') + '\n\nProceed?')) return;
 
     if (bSetup > 0) {
@@ -2659,22 +2665,33 @@ async function saveBilling() {
     var inv   = (document.getElementById('ce-inv-notes')||{}).value||'';
     var pay   = document.getElementById('ce-payment');
     var rate  = parseFloat((document.getElementById('ce-rate')||{}).value||0) || null;
-    var cardLast4  = (document.getElementById('ce-card-last4')  ||{}).value.trim();
-    var cardExpiry = (document.getElementById('ce-card-expiry') ||{}).value.trim();
-    var cardName   = (document.getElementById('ce-card-name')   ||{}).value.trim();
+    var newCycle = cycle ? cycle.options[cycle.selectedIndex].text.toLowerCase() : 'monthly';
+    // Recalculate renewal date from today + new cycle
+    var today = new Date();
+    var newRenewal;
+    if (newCycle === 'annual' || newCycle === 'yearly') {
+      var d = new Date(today); d.setFullYear(d.getFullYear()+1);
+      newRenewal = d.toISOString().split('T')[0];
+    } else {
+      var d2 = new Date(today); d2.setMonth(d2.getMonth()+1);
+      newRenewal = d2.toISOString().split('T')[0];
+    }
     var r = await _sb.from('clients').update({
-      billing_cycle:  cycle ? cycle.options[cycle.selectedIndex].text.toLowerCase() : 'monthly',
+      billing_cycle:  newCycle,
+      renewal_date:   newRenewal,
       billing_notes:  inv||null,
-      payment_method: pay ? pay.options[pay.selectedIndex].text.toLowerCase() : 'stripe',
-      monthly_rate:   rate,
       updated_at: new Date().toISOString()
     }).eq('id', _editingClientId);
     if (r.error) throw r.error;
-    // Save card details separately — columns may need migration
-    if (cardLast4 || cardExpiry || cardName) {
-      await _sb.from('clients').update({
-        card_last4: cardLast4||null, card_expiry: cardExpiry||null, card_name: cardName||null
-      }).eq('id', _editingClientId).then(function(){}).catch(function(){});
+    // Update renewal display
+    var renewalEl = document.getElementById('ce-renewal'); if (renewalEl) renewalEl.value = newRenewal;
+    // Non-blocking: update Stripe subscription interval if one exists
+    var fc = (await _sb.from('clients').select('stripe_subscription_id,tier,bespoke_recurring_price').eq('id',_editingClientId).single()).data;
+    if (fc && fc.stripe_subscription_id) {
+      fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
+        method:'POST', headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON,'Authorization':'Bearer '+SUPABASE_ANON},
+        body:JSON.stringify({ client_id:_editingClientId, tier:fc.tier, billing_cycle:newCycle, bespoke_price:fc.bespoke_recurring_price||null, action:'update' })
+      }).catch(function(){});
     }
     showToastAdmin('Billing saved.', 'success');
   } catch(e) { showToastAdmin('Error: ' + (e.message||e), 'error'); }

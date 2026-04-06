@@ -980,6 +980,7 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
           </div>
           <span class="pill green" style="font-size:.72rem">Default</span>
         </div>
+        <div id="billing-address-display" style="font-size:.78rem;color:#8a9bbf;margin-bottom:10px;min-height:16px"></div>
         <div class="btn-row">
           <button class="btn-sm btn-ghost" onclick="openModal('update-card-modal'); setTimeout(initStripeCardUpdate, 80);">&#9998; Update Card</button>
           <button class="btn-sm btn-ghost" onclick="openModal('billing-address-modal')">&#127968; Billing Address</button>
@@ -1880,7 +1881,11 @@ async function confirmCancel() {
   if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
   try {
     // 1. Mark cancelled in DB
-    var r = await _sb_client.from('clients').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', _clientData.id);
+    // Use both id and auth_user_id to satisfy RLS (client can only update their own row)
+    var r = await _sb_client.from('clients')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', _clientData.id)
+      .eq('auth_user_id', _clientData.auth_user_id);
     if (r.error) throw r.error;
 
     // 2. Cancel Stripe subscription at period end (non-blocking)
@@ -2893,6 +2898,13 @@ function populateAccount(c, billingRows) {
   if (c.billing_city)    setVal('bill-city',   c.billing_city);
   if (c.billing_province){ var ps = document.getElementById('bill-prov'); if(ps) ps.value = c.billing_province; }
   if (c.billing_postal)  setVal('bill-postal', c.billing_postal);
+  // Show billing address inline on the panel
+  var addrDisplay = document.getElementById('billing-address-display');
+  if (addrDisplay) {
+    var addrParts = [c.billing_address, c.billing_city, c.billing_province, c.billing_postal].filter(Boolean);
+    addrDisplay.textContent = addrParts.length ? addrParts.join(', ') : 'No billing address saved — click Billing Address to add.';
+    addrDisplay.style.color = addrParts.length ? '#8a9bbf' : '#f5a623';
+  }
 
   // Show saved card if on file
   if (c.card_last4) {
