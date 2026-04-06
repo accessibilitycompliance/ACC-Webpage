@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<script src="https://js.stripe.com/v3/" defer></script>
+<script src="https://js.stripe.com/v3/"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
 <meta name="theme-color" content="#0a1628"/>
 <meta name="color-scheme" content="dark"/>
@@ -981,7 +981,7 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
           <span class="pill green" style="font-size:.72rem">Default</span>
         </div>
         <div class="btn-row">
-          <button class="btn-sm btn-ghost" onclick="openModal('update-card-modal')">&#9998; Update Card</button>
+          <button class="btn-sm btn-ghost" onclick="openModal('update-card-modal'); setTimeout(initStripeCardUpdate, 80);">&#9998; Update Card</button>
           <button class="btn-sm btn-ghost" onclick="openModal('billing-address-modal')">&#127968; Billing Address</button>
         </div>
       </div>
@@ -1869,17 +1869,46 @@ function sendInstallEmail(client) {
 
 async function confirmCancel() {
   if (!window._clientData) return;
-  var renewalDate = _clientData.renewal_date ? fmtDateLong(_clientData.renewal_date) : 'the end of your billing period';
-  if (!confirm('Cancel your subscription?\n\nYour access continues until ' + renewalDate + '.')) return;
+  var renewalDate = _clientData.renewal_date ? fmtDateLong(_clientData.renewal_date) : 'the end of your current billing period';
+  if (!confirm(
+    'Cancel your subscription?\n\n'
+    + 'Your access and all compliance features remain active until ' + renewalDate + '.\n'
+    + 'No further payments will be taken after this date.\n\n'
+    + 'This cannot be undone from the dashboard. Contact us to reactivate.'
+  )) return;
+  var btn = document.querySelector('button[onclick="confirmCancel()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
   try {
+    // 1. Mark cancelled in DB
     var r = await _sb_client.from('clients').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', _clientData.id);
     if (r.error) throw r.error;
+
+    // 2. Cancel Stripe subscription at period end (non-blocking)
+    // cancel_at_period_end=true means client keeps access until renewal, then no charge
+    if (_clientData.stripe_subscription_id) {
+      fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
+        body: JSON.stringify({ client_id: _clientData.id, action: 'cancel_at_period_end' })
+      }).catch(function(e){ console.warn('Stripe cancel:', e); });
+    }
+
+    // 3. Update local state
     _clientData.status = 'cancelled';
-    set('acc-status', 'Cancelled');
     var statusPill = document.getElementById('acc-status');
     if (statusPill) { statusPill.className = 'pill red'; statusPill.textContent = 'Cancelled'; }
-    showToast('✓ Cancellation submitted. Access continues until ' + renewalDate + '.');
+
+    // 4. Replace cancel button with a clear message
+    if (btn) {
+      btn.outerHTML = '<div style="background:rgba(240,95,95,.08);border:1px solid rgba(240,95,95,.2);border-radius:8px;padding:10px 14px;font-size:.78rem;color:#f05f5f;line-height:1.5">'
+        + '<strong>Subscription cancelled.</strong> Your access remains active until <strong>' + renewalDate + '</strong>. '
+        + 'No further payments will be taken. To reactivate, contact '
+        + '<a href="mailto:partner@accessibilitycompliance.ca" style="color:#f05f5f">partner@accessibilitycompliance.ca</a>.'
+        + '</div>';
+    }
+    showToast('\u2713 Cancellation confirmed. Access continues until ' + renewalDate + '.');
   } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Cancel Subscription'; }
     alert('Could not cancel: ' + (e.message || e));
   }
 }
@@ -2066,10 +2095,26 @@ var TEMPLATE_URLS = {
 var _cardUpdateStripe = null;
 var _cardUpdateElement = null;
 
+// Called every time the Update Card modal opens.
+// Unmounts any previous element and mounts fresh — required because
+// Stripe Elements cannot measure itself when the container is display:none.
 function initStripeCardUpdate() {
-  if (_cardUpdateStripe || typeof Stripe === 'undefined') return;
+  var container = document.getElementById('stripe-card-element');
+  if (!container) return;
+  if (typeof Stripe === 'undefined') {
+    container.innerHTML = '<div style="color:#f05f5f;font-size:.8rem">Stripe failed to load. Please refresh the page.</div>';
+    return;
+  }
+  // Unmount previous element if any
+  if (_cardUpdateElement) {
+    try { _cardUpdateElement.unmount(); } catch(_) {}
+    _cardUpdateElement = null;
+  }
+  container.innerHTML = ''; // clear placeholder
   try {
-    _cardUpdateStripe = Stripe('pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ');
+    if (!_cardUpdateStripe) {
+      _cardUpdateStripe = Stripe('pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ');
+    }
     var elements = _cardUpdateStripe.elements({
       appearance: {
         theme: 'night',
@@ -2077,25 +2122,16 @@ function initStripeCardUpdate() {
       }
     });
     _cardUpdateElement = elements.create('card', { hidePostalCode: true });
-    _cardUpdateElement.mount('#stripe-card-element');
+    _cardUpdateElement.mount(container);
     _cardUpdateElement.on('change', function(e) {
       var errEl = document.getElementById('stripe-card-error');
       if (errEl) { errEl.textContent = e.error ? e.error.message : ''; errEl.style.display = e.error ? 'block' : 'none'; }
     });
-  } catch(e) { console.warn('Stripe init failed:', e); }
-}
-
-// Init Stripe card element when Update Card modal opens
-var _origOpenModal = window.openModal;
-window.openModal = function(id) {
-  if (typeof _origOpenModal === 'function') _origOpenModal(id);
-  if (id === 'update-card-modal') {
-    setTimeout(function() {
-      if (typeof Stripe !== 'undefined') initStripeCardUpdate();
-      else { var s=document.createElement('script'); s.src='https://js.stripe.com/v3/'; s.onload=initStripeCardUpdate; document.head.appendChild(s); }
-    }, 100);
+  } catch(e) {
+    console.warn('Stripe card init failed:', e);
+    if (container) container.innerHTML = '<div style="color:#f05f5f;font-size:.8rem">Could not load card input: ' + e.message + '</div>';
   }
-};
+}
 
 async function saveCard() {
   var name = (document.getElementById('new-card-name') || {}).value.trim();
@@ -2111,7 +2147,7 @@ async function saveCard() {
     // Step 1: Create SetupIntent via stripe-checkout edge function
     var siRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/stripe-checkout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': _sb_client.supabaseKey || '' },
+      headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
       body: JSON.stringify({
         email:        _clientData.email,
         company:      _clientData.name,
@@ -2137,7 +2173,7 @@ async function saveCard() {
     if (btn) btn.textContent = 'Saving…';
     var updRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-payment-method', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': _sb_client.supabaseKey || '' },
+      headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
       body: JSON.stringify({ client_id: _clientData.id, payment_method_id: paymentMethodId })
     });
     var updData = await updRes.json();
@@ -2840,6 +2876,15 @@ function populateAccount(c, billingRows) {
         var acc = b.getAttribute('data-access');
         if (acc && acc !== 'account_billing') b.style.display = 'none';
       });
+    }
+    // Already cancelled — replace cancel button with informational note
+    var cancelBtn = document.querySelector('button[onclick="confirmCancel()"]');
+    if (cancelBtn) {
+      var rd = c.renewal_date ? fmtDateLong(c.renewal_date) : 'your billing period end';
+      cancelBtn.outerHTML = '<div style="background:rgba(240,95,95,.08);border:1px solid rgba(240,95,95,.2);border-radius:8px;padding:10px 14px;font-size:.78rem;color:#f05f5f;line-height:1.5">'
+        + '<strong>Subscription cancelled.</strong> Your access remains active until <strong>' + rd + '</strong>. '
+        + 'To reactivate, contact <a href="mailto:partner@accessibilitycompliance.ca" style="color:#f05f5f">partner@accessibilitycompliance.ca</a>.'
+        + '</div>';
     }
   }
 

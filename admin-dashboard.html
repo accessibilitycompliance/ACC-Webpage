@@ -954,26 +954,7 @@ Scores show <em>site today → with widget applied</em>.
         </div>
       </div>
 
-      <!-- Invoices -->
-      <div style="margin-bottom:24px;background:#0a1e38;border:1px solid #1e3a6b;border-radius:10px;padding:16px">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-          <h5 style="font-size:.82rem;color:#e8edf8;font-weight:700">&#128179; Invoices</h5>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <input type="month" id="files-invoice-month" class="finput" style="font-size:.75rem;padding:5px 8px;width:140px"
-              title="Select billing month to generate invoice">
-            <button class="btn-sm btn-primary" onclick="generateInvoiceForClient()" style="font-size:.75rem">
-              &#9998; Generate
-            </button>
-            <label style="cursor:pointer;background:#1e3a6b;color:#4f8ef7;border:1px solid #4f8ef7;border-radius:6px;padding:8px 16px;font-size:.8rem;font-weight:700;white-space:nowrap;flex-shrink:0">
-              &#8593; Upload PDF
-              <input type="file" accept=".pdf" style="display:none" onchange="handleAdminUpload(this,'invoices')">
-            </label>
-          </div>
-        </div>
-        <div id="files-invoices" style="min-height:40px">
-          <div style="color:#8a9bbf;font-size:.8rem">No files yet.</div>
-        </div>
-      </div>
+      <!-- Invoices section removed — managed in Billing tab -->
 
       <!-- Templates / Other -->
       <div style="margin-bottom:8px;background:#0a1e38;border:1px solid #1e3a6b;border-radius:10px;padding:16px">
@@ -1542,7 +1523,7 @@ async function sendSetupLink() {
 
     // Send email via Resend edge function (non-blocking)
     try {
-      await fetch(SUPABASE_URL + '/functions/v1/send-email', {
+      await fetch(SUPABASE_URL + '/functions/v1/send-onboarding-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
         body: JSON.stringify({
@@ -3298,7 +3279,7 @@ async function generateInvoiceForClient() {
     // Upload to invoices bucket as .html
     var enc   = new TextEncoder().encode(html);
     var fname = code + '/' + ym + '-invoice.html';
-    var up    = await _sb.storage.from('invoices').upload(fname, enc, { contentType:'text/html', upsert:true });
+    var up    = await _sb.storage.from('invoices').upload(fname, enc, { contentType:'application/octet-stream', upsert:true });
     if (up.error) throw up.error;
     showToastAdmin('Invoice generated for ' + ym, 'success');
     renderFileList('invoices', code);
