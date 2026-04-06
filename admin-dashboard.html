@@ -715,8 +715,10 @@ Scores show <em>site today → with widget applied</em>.
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
             <input class="finput" id="nc-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
-          <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
+          <div class="fgroup" style="margin:0"><label>Recurring Price ($)</label>
             <input class="finput" id="nc-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+          <div class="fgroup" style="margin:0"><label>Recurring Cycle</label>
+            <select class="finput" id="nc-bespoke-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select></div>
         </div>
       </div>
       <div id="nc-bespoke-hint" style="font-size:.7rem;color:#8a9bbf;margin-top:8px"></div>
@@ -779,8 +781,10 @@ Scores show <em>site today → with widget applied</em>.
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
               <div class="fgroup" style="margin:0"><label>Setup Price ($)</label>
                 <input class="finput" id="ce-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
-              <div class="fgroup" style="margin:0"><label>Recurring Price ($/mo)</label>
+              <div class="fgroup" style="margin:0"><label>Recurring Price ($)</label>
                 <input class="finput" id="ce-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+              <div class="fgroup" style="margin:0"><label>Recurring Cycle</label>
+                <select class="finput" id="ce-bespoke-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select></div>
             </div>
             <div style="font-size:.68rem;color:#8a9bbf;margin-top:8px">&#9432; Save with a setup price to auto-generate an invoice. Set recurring price to start subscription billing. Both optional if on trial.</div>
           </div>
@@ -806,7 +810,7 @@ Scores show <em>site today → with widget applied</em>.
           </div>
         </div>
         <div class="fgroup"><label>Start Date</label><input class="finput" type="date" id="ce-start" value="2026-01-10" onchange="ceAutoFillRenewal()"></div>
-        <div class="fgroup"><label>Next Renewal <span style="font-size:.65rem;color:#8a9bbf">(auto-calculated)</span></label><input class="finput" type="date" id="ce-renewal" readonly tabindex="-1" style="opacity:.6;cursor:default" title="Recalculated when billing cycle is saved"></div>
+        <div class="fgroup"><label>Next Renewal <span style="font-size:.65rem;color:#8a9bbf">(auto-calculated)</span></label><input class="finput" type="text" id="ce-renewal" readonly tabindex="-1" style="opacity:.6;cursor:default;pointer-events:none" title="Current period end date. Not changed when updating billing cycle."></div>
         <div class="fgroup" style="grid-column:1/-1"><label>Billing Notes</label><input class="finput" id="ce-billing-note" placeholder="e.g. invoice by email, net 30"></div>
       </div>
       <div class="btn-row" style="margin-top:12px">
@@ -1539,11 +1543,14 @@ async function sendSetupLink() {
             + '</div>'
         })
       });
+      if (!emailRes.ok) {
+        var emailErrBody = await emailRes.json().catch(function(){return {};});
+        throw new Error(emailErrBody.error || 'HTTP ' + emailRes.status);
+      }
+      showToastAdmin('Setup link copied to clipboard & emailed to ' + cl.email, 'success');
     } catch(emailErr) {
-      showToastAdmin('Email error: ' + (emailErr.message || emailErr), 'warn');
+      showToastAdmin('Email failed: ' + (emailErr.message || emailErr) + ' — link still copied to clipboard.', 'warn');
     }
-
-    showToastAdmin('Setup link copied to clipboard & emailed to ' + cl.email, 'success');
 
     // Log to billing as pending — flat try/catch (Supabase never rejects promises)
     try {
@@ -1567,7 +1574,8 @@ async function sendSetupLink() {
 // ── Tier / billing change handler ─────────────────────────────────────────────
 // Called after saveClientInfo saves the DB row.
 // Handles all 6 tier-change scenarios explicitly with confirmation dialogs.
-async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTrialDays) {
+async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTrialDays, bCycle) {
+  bCycle = bCycle || 'monthly';
   var hasSub  = !!client.stripe_subscription_id;
   var hasCard = !!client.stripe_customer_id;
   var isTrial = bTrialDays > 0 && newTier === 4;
@@ -1599,7 +1607,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
   if (newTier === 4) {
     var actions = [];
     if (bSetup > 0)     actions.push('Setup invoice: $' + bSetup.toFixed(2) + ' + HST');
-    if (bRecurring > 0) actions.push((hasSub ? 'Update' : 'Create') + ' recurring: $' + bRecurring.toFixed(2) + '/mo');
+    if (bRecurring > 0) actions.push((hasSub ? 'Update' : 'Create') + ' recurring: $' + bRecurring.toFixed(2) + '/' + (bCycle === 'annual' ? 'yr' : 'mo'));
     if (!actions.length) {
       var trialChk = document.getElementById('ce-bespoke-trial-chk');
       if (!trialChk || !trialChk.checked) {
@@ -1632,7 +1640,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
           var ur = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-            body: JSON.stringify({ client_id: client.id, tier: 4, billing_cycle: client.billing_cycle || 'monthly', bespoke_price: bRecurring, action: hasSub ? 'update' : 'create' })
+            body: JSON.stringify({ client_id: client.id, tier: 4, billing_cycle: bCycle, bespoke_price: bRecurring, action: hasSub ? 'update' : 'create' })
           });
           var ures = await ur.json();
           if (ures.error) showToastAdmin('Subscription warning: ' + ures.error, 'warn');
@@ -2162,7 +2170,8 @@ async function addClient() {
       billing_type:     parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===3 ? 'one_time' : 'recurring',
       bespoke_setup_price:     parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseFloat((document.getElementById('nc-bespoke-setup')||{value:'0'}).value)||0) : null,
       bespoke_recurring_price: parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseFloat((document.getElementById('nc-bespoke-recurring')||{value:'0'}).value)||0) : null,
-      bespoke_trial_days:      parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseInt((document.getElementById('nc-bespoke-trial')||{value:'0'}).value)||0) : 0
+      bespoke_trial_days:      parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseInt((document.getElementById('nc-bespoke-trial')||{value:'0'}).value)||0) : 0,
+      bespoke_billing_cycle:   parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? ((document.getElementById('nc-bespoke-cycle')||{value:'monthly'}).value||'monthly') : null
     };
 
     var r = await _sb.from('clients').insert(payload).select('id,client_code').single();
@@ -2299,6 +2308,8 @@ async function openClientEditor(btn) {
     var _setNum = function(id, val) { var el = document.getElementById(id); if (el) el.value = (val != null && val !== '') ? val : ''; };
     _setNum('ce-bespoke-setup',     cTier === 4 ? c.bespoke_setup_price     : '');
     _setNum('ce-bespoke-recurring', cTier === 4 ? c.bespoke_recurring_price : '');
+    var bCycleEl = document.getElementById('ce-bespoke-cycle');
+    if (bCycleEl && c.bespoke_billing_cycle) bCycleEl.value = c.bespoke_billing_cycle;
     var isTrial = cTier === 4 && (c.bespoke_trial_days || 0) > 0;
     var trialChk = document.getElementById('ce-bespoke-trial-chk');
     if (trialChk) { trialChk.checked = isTrial; toggleBespokeTrialFields('ce'); }
@@ -2477,6 +2488,7 @@ async function saveClientInfo() {
     var bSetup     = parseFloat((document.getElementById('ce-bespoke-setup')||{value:'0'}).value)||0;
     var bRecurring = parseFloat((document.getElementById('ce-bespoke-recurring')||{value:'0'}).value)||0;
     var bTrial     = parseInt((document.getElementById('ce-bespoke-trial')||{value:'0'}).value)||0;
+    var bCycle     = (document.getElementById('ce-bespoke-cycle')||{value:'monthly'}).value || 'monthly';
     var billingType = tier === 3 ? 'one_time' : 'recurring';
 
     var update = {
@@ -2499,6 +2511,7 @@ async function saveClientInfo() {
       bespoke_setup_price:     tier === 4 ? bSetup     : null,
       bespoke_recurring_price: tier === 4 ? bRecurring : null,
       bespoke_trial_days:      tier === 4 ? bTrial     : 0,
+      bespoke_billing_cycle:   tier === 4 ? bCycle     : null,
     };
     var r = await _sb.from('clients').update(update).eq('id', _editingClientId);
     if (r.error) throw r.error;
@@ -2560,7 +2573,7 @@ async function saveClientInfo() {
     if (prevTierVal && prevTierVal !== tier) {
       try {
         var freshClient = (await _sb.from('clients').select('*').eq('id',_editingClientId).single()).data;
-        await handleTierBillingChange(freshClient, tier, bSetup, bRecurring, bTrial);
+        await handleTierBillingChange(freshClient, tier, bSetup, bRecurring, bTrial, bCycle);
       } catch(e) { console.warn('Billing update:', e); }
     }
 
@@ -2676,30 +2689,17 @@ async function saveBilling() {
     var pay   = document.getElementById('ce-payment');
     var rate  = parseFloat((document.getElementById('ce-rate')||{}).value||0) || null;
     var newCycle = cycle ? cycle.options[cycle.selectedIndex].text.toLowerCase() : 'monthly';
-    // Recalculate renewal date from start_date + new cycle
-    // (not from today — preserves the original billing anchor)
-    var clientRow = (await _sb.from('clients').select('start_date,renewal_date').eq('id',_editingClientId).single()).data;
-    var anchorDate = clientRow && clientRow.start_date ? new Date(clientRow.start_date) : new Date();
-    var newRenewal;
-    if (newCycle === 'annual' || newCycle === 'yearly') {
-      var d = new Date(anchorDate); d.setFullYear(d.getFullYear()+1);
-      // Advance until future date if start was in the past
-      while (d <= new Date()) d.setFullYear(d.getFullYear()+1);
-      newRenewal = d.toISOString().split('T')[0];
-    } else {
-      var d2 = new Date(anchorDate);
-      while (d2 <= new Date()) d2.setMonth(d2.getMonth()+1);
-      newRenewal = d2.toISOString().split('T')[0];
-    }
+    // Billing cycle change: keep existing renewal_date — change takes effect at next renewal.
+    // The client already paid through to the current renewal date; that doesn't change.
+    var clientRow = (await _sb.from('clients').select('renewal_date').eq('id',_editingClientId).single()).data;
+    var newRenewal = clientRow && clientRow.renewal_date ? clientRow.renewal_date : null;
     var r = await _sb.from('clients').update({
       billing_cycle:  newCycle,
-      renewal_date:   newRenewal,
       billing_notes:  inv||null,
       updated_at: new Date().toISOString()
     }).eq('id', _editingClientId);
     if (r.error) throw r.error;
     // Update renewal display
-    var renewalEl = document.getElementById('ce-renewal'); if (renewalEl) renewalEl.value = newRenewal;
     // Non-blocking: update Stripe subscription interval if one exists
     var fc = (await _sb.from('clients').select('stripe_subscription_id,tier,bespoke_recurring_price').eq('id',_editingClientId).single()).data;
     if (fc && fc.stripe_subscription_id) {
@@ -2708,7 +2708,8 @@ async function saveBilling() {
         body:JSON.stringify({ client_id:_editingClientId, tier:fc.tier, billing_cycle:newCycle, bespoke_price:fc.bespoke_recurring_price||null, action:'update' })
       }).catch(function(){});
     }
-    showToastAdmin('Billing saved.', 'success');
+    var cycleChangeMsg = (newCycle === 'annual' || newCycle === 'yearly') ? 'Annual' : 'Monthly';
+    showToastAdmin('Billing saved. Cycle changed to ' + cycleChangeMsg + ' — takes effect at next renewal (' + (newRenewal || 'current period end') + ').', 'success');
   } catch(e) { showToastAdmin('Error: ' + (e.message||e), 'error'); }
   finally { if (btn) { btn.textContent = '✓ Save Billing'; btn.disabled = false; } }
 }

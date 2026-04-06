@@ -1208,7 +1208,7 @@ function resetSubmitBtn(){
     if(row && row.id){
       var hdrs = {'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON};
       fetch(SB_URL+'/functions/v1/send-welcome-email',{method:'POST',headers:hdrs,body:JSON.stringify({client_id:row.id})}).catch(function(){});
-      fetch(SB_URL+'/functions/v1/generate-invoice',{method:'POST',headers:hdrs,body:JSON.stringify({client_id:row.id})}).catch(function(){});
+      fetch(SB_URL+'/functions/v1/generate-invoice',{method:'POST',headers:hdrs,body:JSON.stringify({client_id:row.id,initialStatus:'paid'})}).catch(function(){});
     }
     sessionStorage.removeItem('_acc_pending');
     showSuccessScreen(pending.firstName, pending.email);
@@ -1290,7 +1290,7 @@ async function createAccount(p, stripeCtx){
     // First invoice
     fetch(SB_URL+'/functions/v1/generate-invoice', {
       method:'POST', headers:ANON_HDR,
-      body:JSON.stringify({client_id:row.id})
+      body:JSON.stringify({client_id:row.id,initialStatus:'paid'})
     }).catch(function(e){ console.warn('invoice:', e); });
 
     showSuccessScreen(p.firstName, p.email);
