@@ -2184,8 +2184,9 @@ async function saveCard() {
         currency:     'cad',
       })
     });
-    if (!siRes.ok) { var e = await siRes.json(); throw new Error(e.error || 'SetupIntent failed: ' + siRes.status); }
-    var siData = await siRes.json();
+    var siText = await siRes.text();
+    if (!siRes.ok) { var siErr; try { siErr = JSON.parse(siText); } catch(_) { siErr = {}; } throw new Error(siErr.error || 'SetupIntent failed (' + siRes.status + '): ' + siText.slice(0,100)); }
+    var siData; try { siData = JSON.parse(siText); } catch(_) { throw new Error('Invalid response from server: ' + siText.slice(0,80)); }
     if (siData.error) throw new Error(siData.error);
 
     // Step 2: Confirm new card via Stripe Elements

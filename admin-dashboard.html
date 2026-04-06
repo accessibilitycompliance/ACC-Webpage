@@ -831,7 +831,7 @@ Scores show <em>site today → with widget applied</em>.
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div class="fgroup"><label>Billing Cycle</label>
-          <select class="finput" id="ce-cycle" onchange="ceAutoFillRenewal()"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select>
+          <select class="finput" id="ce-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select>
         </div>
         
         <div class="fgroup"><label style="color:#8a9bbf">Rate</label><div style="font-size:.78rem;color:#8a9bbf;padding:8px 0">Set via tier selection above. Use Tier 4 Bespoke for custom pricing.</div></div>
@@ -1535,7 +1535,7 @@ async function sendSetupLink() {
           subject: 'Set up your ACC account — ' + (cl.name || ''),
           html: '<div style="font-family:system-ui,sans-serif;background:#060d1a;color:#e8edf8;padding:32px;max-width:520px;margin:0 auto">'
             + '<h2 style="color:#4f8ef7">Welcome to ACC &mdash; set up your account</h2>'
-            + '<p style="color:#8a9bbf">Hi ' + _esc(cl.name || 'there') + ', your accessibility compliance account has been created. Click below to set your password and enter your payment details.</p>'
+            + '<p style="color:#8a9bbf">Hi ' + esc(cl.name || 'there') + ', your accessibility compliance account has been created. Click below to set your password and enter your payment details.</p>'
             + '<a href="' + setupUrl + '" style="display:inline-block;background:linear-gradient(135deg,#4f8ef7,#38d9a9);color:#0a1628;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;margin:16px 0">Activate My Account &#8594;</a>'
             + '<p style="color:#8a9bbf;font-size:.82rem">You will be asked to set a password and enter your payment card on the next page.</p>'
             + '<p style="color:#4a5568;font-size:.78rem">Or copy this link: <a href="' + setupUrl + '" style="color:#4f8ef7">' + setupUrl + '</a></p>'
@@ -2171,7 +2171,6 @@ async function addClient() {
       bespoke_setup_price:     parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseFloat((document.getElementById('nc-bespoke-setup')||{value:'0'}).value)||0) : null,
       bespoke_recurring_price: parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseFloat((document.getElementById('nc-bespoke-recurring')||{value:'0'}).value)||0) : null,
       bespoke_trial_days:      parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? (parseInt((document.getElementById('nc-bespoke-trial')||{value:'0'}).value)||0) : 0,
-      bespoke_billing_cycle:   parseInt((document.getElementById('nc-tier')||{value:'1'}).value)===4 ? ((document.getElementById('nc-bespoke-cycle')||{value:'monthly'}).value||'monthly') : null
     };
 
     var r = await _sb.from('clients').insert(payload).select('id,client_code').single();
@@ -2309,7 +2308,7 @@ async function openClientEditor(btn) {
     _setNum('ce-bespoke-setup',     cTier === 4 ? c.bespoke_setup_price     : '');
     _setNum('ce-bespoke-recurring', cTier === 4 ? c.bespoke_recurring_price : '');
     var bCycleEl = document.getElementById('ce-bespoke-cycle');
-    if (bCycleEl && c.bespoke_billing_cycle) bCycleEl.value = c.bespoke_billing_cycle;
+    // bespoke_billing_cycle not yet in schema — skip load; cycle defaults to monthly
     var isTrial = cTier === 4 && (c.bespoke_trial_days || 0) > 0;
     var trialChk = document.getElementById('ce-bespoke-trial-chk');
     if (trialChk) { trialChk.checked = isTrial; toggleBespokeTrialFields('ce'); }
@@ -2511,7 +2510,6 @@ async function saveClientInfo() {
       bespoke_setup_price:     tier === 4 ? bSetup     : null,
       bespoke_recurring_price: tier === 4 ? bRecurring : null,
       bespoke_trial_days:      tier === 4 ? bTrial     : 0,
-      bespoke_billing_cycle:   tier === 4 ? bCycle     : null,
     };
     var r = await _sb.from('clients').update(update).eq('id', _editingClientId);
     if (r.error) throw r.error;
