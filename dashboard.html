@@ -3502,9 +3502,10 @@ async function generateBaselineClientSide(c) {
   var today  = new Date().toLocaleDateString('en-CA', {year:'numeric',month:'long',day:'numeric'});
   var startLabel = c.start_date ? new Date(c.start_date).toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'}) : today;
   var scoreColor = score===null?'#6b7280':score>=80?'#065f46':score>=60?'#92400e':'#991b1b';
-  // Before/after widget score — use totalFixes from scan data (fixes_applied column)
-  var _totalFixCount = scanSummary ? scanSummary.reduce(function(t,s){return t+(s.fixes_applied||0);},0) : nFixed;
-  var scoreWithout = (score !== null && _totalFixCount > 0) ? Math.max(0, score - _totalFixCount * 7) : score;
+  // FIX 4: scoreWithout uses nFixed (unique fix types) × 7 — NOT the cross-page
+  // scans.fixes_applied sum which inflated e.g. 4 types × 8 pages = 32 → wrongly floors to 0
+  // nFixed is already the count of unique fixed issue types from the dedup'd issueList above
+  var scoreWithout = (score !== null && nFixed > 0) ? Math.max(0, score - nFixed * 7) : score;
   var autoFixImpact = (score !== null && scoreWithout !== null) ? score - scoreWithout : 0;
 
   function escH(s){ var d=document.createElement('div'); d.textContent=String(s||''); return d.innerHTML; }
@@ -3603,7 +3604,7 @@ async function generateBaselineClientSide(c) {
           + '<div style="margin:16px 28px 0;padding:14px 18px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px">'
           + '<div style="font-size:.82rem;font-weight:700;color:#065f46;margin-bottom:8px">🤖 ACC Widget auto-fixes on every page load</div>'
           + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'
-          + '<div style="text-align:center;background:#fff;border-radius:8px;padding:10px;border:1px solid #a7f3d0"><div style="font-size:1.4rem;font-weight:800;color:#065f46">' + _totalFixCount + '</div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6ee7b7">Fix Types</div></div>'
+          + '<div style="text-align:center;background:#fff;border-radius:8px;padding:10px;border:1px solid #a7f3d0"><div style="font-size:1.4rem;font-weight:800;color:#065f46">' + nFixed + '</div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6ee7b7">Fix Types</div></div>'
           + '<div style="text-align:center;background:#fff;border-radius:8px;padding:10px;border:1px solid #a7f3d0"><div style="font-size:1.4rem;font-weight:800;color:#065f46">' + nFixed + '</div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6ee7b7">Categories</div></div>'
           + '<div style="text-align:center;background:#fff;border-radius:8px;padding:10px;border:1px solid #a7f3d0"><div style="font-size:1.4rem;font-weight:800;color:#065f46">+' + autoFixImpact + '</div><div style="font-size:.62rem;font-weight:700;text-transform:uppercase;color:#6ee7b7">Score Pts</div></div>'
           + '</div></div>'
@@ -4189,27 +4190,44 @@ async function generateCertificate(employeeName, courseName, completionDate) {
 }
 
 // ── Item 1 & 2: Populate overview stats + scan data from DB ──
+// All values computed from scan_issues (same source as monthly report) so scorecard
+// tiles always match what the client sees in their PDF report.
+//
+// FIXES vs old version:
+//   FIX 1 — Auto-Fixes: counts unique fix types from scan_issues (not cross-page
+//            scans.fixes_applied sum which inflated e.g. 4 types × 8 pages = 32)
+//   FIX 2 — Score: recomputed from scan_issues using 100-A×14-AA×7-W×3 (not averaged
+//            scans.score which used widget's per-page formula and different cfg)
+//   FIX 3 — POUR: recomputed from scan_issues with correct A×14 / AA×7 split per
+//            principle (scans table used all-errors-as-×14)
+//   FIX 4 — scoreWithout in baseline viewer: uses nFixed unique types × 7
+//            (not _totalFixCount cross-page sum × 7 which floored to 0)
+//   FIX 5 — Month boundaries: explicit UTC via Date.UTC() — avoids local-time
+//            timezone shift that caused edge-of-month scans to fall in wrong window
 async function populateScanData(clientCode) {
-  // Use monthly aggregate — same source as the monthly report.
-  // Averaging across all unique pages scanned this month gives a stable number
-  // instead of whichever single page happened to be scanned last.
   var scan = null;
   var pageCount = 0;
-  try {
-    var now = new Date();
-    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    var monthEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
 
+  // FIX 5: UTC month boundaries — consistent with generate-audit-report edge fn
+  var _now = new Date();
+  var _cy  = _now.getUTCFullYear();
+  var _cm  = _now.getUTCMonth(); // 0-based
+  var _ny  = _cm === 11 ? _cy + 1 : _cy;
+  var _nm  = _cm === 11 ? 0 : _cm + 1;
+  var monthStart = new Date(Date.UTC(_cy, _cm, 1)).toISOString();
+  var monthEnd   = new Date(Date.UTC(_ny, _nm, 1)).toISOString();
+
+  // Still read scans table for page count, scanned_at timestamp, and fallback POUR
+  try {
     var { data: monthScans } = await _sb_client
       .from('scans')
-      .select('score,critical,warnings,fixes_applied,auto_fixed,requires_dev,perceivable,operable,understandable,robust,scanned_at,page_url')
+      .select('score,perceivable,operable,understandable,robust,scanned_at,page_url')
       .eq('client_code', clientCode)
       .gte('scanned_at', monthStart)
       .lt('scanned_at', monthEnd)
       .order('scanned_at', { ascending: false });
 
     if (monthScans && monthScans.length > 0) {
-      // De-duplicate by page_url — keep most recent scan per page
       var pageMap = {};
       monthScans.forEach(function(s) {
         var key = s.page_url || ('__' + Math.random());
@@ -4217,101 +4235,154 @@ async function populateScanData(clientCode) {
       });
       var unique = Object.values(pageMap);
       pageCount = unique.length;
-      var avg = function(key) {
-        return Math.round(unique.reduce(function(t,s){ return t + (s[key] || 0); }, 0) / unique.length);
-      };
       scan = {
-        score:          avg('score'),
-        critical:       unique.reduce(function(t,s){ return t + (s.critical||0); }, 0),
-        warnings:       unique.reduce(function(t,s){ return t + (s.warnings||0); }, 0),
-        fixes_applied:  unique.reduce(function(t,s){ return t + (s.fixes_applied||0); }, 0),
-        auto_fixed:     unique.reduce(function(t,s){ return t + (s.auto_fixed||0); }, 0),
-        requires_dev:   unique.reduce(function(t,s){ return t + (s.requires_dev||0); }, 0),
-        perceivable:    avg('perceivable'),
-        operable:       avg('operable'),
-        understandable: avg('understandable'),
-        robust:         avg('robust'),
-        scanned_at:     monthScans[0].scanned_at,
-        _monthly: true, _pageCount: pageCount
+        scanned_at: monthScans[0].scanned_at,
+        _monthly: true, _pageCount: pageCount,
+        // Store raw POUR from scans as fallback only — overridden below if scan_issues available
+        _pourP: Math.round(unique.reduce(function(t,s){return t+(s.perceivable||0);},0)/unique.length),
+        _pourO: Math.round(unique.reduce(function(t,s){return t+(s.operable||0);},0)/unique.length),
+        _pourU: Math.round(unique.reduce(function(t,s){return t+(s.understandable||0);},0)/unique.length),
+        _pourR: Math.round(unique.reduce(function(t,s){return t+(s.robust||0);},0)/unique.length),
       };
     } else {
-      // No scans this month — fall back to most recent single scan
+      // No scans this month — fall back to most recent single scan for timestamp only
       var { data: latest } = await _sb_client
-        .from('scans').select('*').eq('client_code', clientCode)
+        .from('scans').select('scanned_at,page_url').eq('client_code', clientCode)
         .order('scanned_at', { ascending: false }).limit(1).maybeSingle();
-      scan = latest || null;
+      if (latest) scan = { scanned_at: latest.scanned_at, _monthly: false, _pageCount: 1 };
     }
   } catch(_) { scan = null; }
 
-  var score    = scan ? (scan.score       ?? 0) : 0;
-  var fixes    = scan ? (scan.fixes_applied ?? 0) : 0;
-  var autoFixed = scan ? (scan.auto_fixed   ?? 0) : 0;
-  // Pull critical/warnings/devFixes from scan_issues — same source as generate-audit-report edge fn
-  // This guarantees scorecard tiles match what the client sees in their monthly report
-  var critical = 0;
-  var warnings = 0;
-  var devFixes = 0;
+  // ── Primary data source: scan_issues — same as generate-audit-report ──────
+  // All scorecard values computed here. Falls back to scans table only if empty.
+  var score    = 0;
+  var fixTypes = 0;   // unique auto-fix type count — matches "Auto-Fixes" in report
+  var elemFixed = 0;  // total elements fixed (sum of element_count per fixed type)
+  var critical = 0;   // unique error issue types
+  var warnings = 0;   // unique warning issue types
+  var devFixes = 0;   // High severity (Level A) errors
+  var pourP = null, pourO = null, pourU = null, pourR = null;
+
+  // CRITERION → WCAG level map (mirrors widget and edge fn exactly)
+  var CRIT_LEVEL = {
+    '1.1.1':'A','1.2.1':'A','1.2.2':'A','1.3.1':'A','1.3.4':'AA','1.3.5':'AA',
+    '1.4.1':'A','1.4.2':'A','1.4.3':'AA','1.4.4':'AA','1.4.5':'AA',
+    '1.4.10':'AA','1.4.11':'AA','1.4.12':'AA',
+    '2.1.1':'A','2.1.2':'A','2.2.2':'A','2.3.1':'A','2.4.1':'A','2.4.2':'A',
+    '2.4.3':'A','2.4.4':'A','2.4.7':'AA','2.5.5':'AA',
+    '3.1.1':'A','3.2.1':'A','3.3.1':'A','3.3.2':'A',
+    '4.1.1':'A','4.1.2':'A'
+  };
+  var levelOf = function(c){ return CRIT_LEVEL[c] || 'AA'; };
+
+  // CRITERION → POUR principle map
+  var POUR_MAP = {
+    '1.1.1':'P','1.2.1':'P','1.2.2':'P','1.3.1':'P','1.3.4':'P','1.3.5':'P',
+    '1.4.1':'P','1.4.2':'P','1.4.3':'P','1.4.4':'P','1.4.5':'P',
+    '1.4.10':'P','1.4.11':'P','1.4.12':'P',
+    '2.1.1':'O','2.1.2':'O','2.2.2':'O','2.3.1':'O','2.4.1':'O','2.4.2':'O',
+    '2.4.3':'O','2.4.4':'O','2.4.7':'O','2.5.5':'O',
+    '3.1.1':'U','3.2.1':'U','3.3.1':'U','3.3.2':'U',
+    '4.1.1':'R','4.1.2':'R'
+  };
+
+  var hasScanIssues = false;
   if (clientCode) {
     try {
-      var _siNow = new Date();
-      var _siMs  = new Date(_siNow.getFullYear(), _siNow.getMonth(), 1).toISOString();
-      var _siMe  = new Date(_siNow.getFullYear(), _siNow.getMonth()+1, 1).toISOString();
-      var _siR   = await _sb_client.from('scan_issues')
-        .select('type,level,criterion')
+      var _siR = await _sb_client.from('scan_issues')
+        .select('type,criterion,element_count')
         .eq('client_code', clientCode)
-        .gte('scanned_at', _siMs)
-        .lt('scanned_at', _siMe);
-      if (!_siR.error && _siR.data && _siR.data.length) {
-        // Deduplicate by criterion+type — scan_issues has one row per element
-        // (same issue on 5 pages = 5 rows; we want 1 unique issue type)
-        var _siSeen = {};
-        var _siUniq = _siR.data.filter(function(r) {
-          var k = r.type + '::' + (r.criterion || '');
-          if (_siSeen[k]) return false;
-          _siSeen[k] = true; return true;
-        });
-        critical = _siUniq.filter(function(r){ return r.type==='error'; }).length;
-        warnings = _siUniq.filter(function(r){ return r.type==='warning'; }).length;
-        devFixes = _siUniq.filter(function(r){ return r.type==='error' && r.level==='A'; }).length;
-      } else {
-        // scan_issues empty this month — fall back to scans table aggregate columns
-        critical = scan ? ((scan.critical ?? 0) + (scan.requires_dev ?? 0)) : 0;
-        warnings = scan ? (scan.warnings ?? 0) : 0;
-      }
-    } catch(_) {
-      // query failed — fall back to scans table
-      critical = scan ? ((scan.critical ?? 0) + (scan.requires_dev ?? 0)) : 0;
-      warnings = scan ? (scan.warnings ?? 0) : 0;
-    }
-  }
+        .gte('scanned_at', monthStart)
+        .lt('scanned_at', monthEnd);
 
-  // Fix 3: fallback — count type='fixed' rows in scan_issues if scans.fixes_applied=0
-  if (fixes === 0 && clientCode) {
-    try {
-      var _now2 = new Date();
-      var _mStart = new Date(_now2.getFullYear(), _now2.getMonth(), 1).toISOString();
-      var _mEnd   = new Date(_now2.getFullYear(), _now2.getMonth()+1, 1).toISOString();
-      var _fixR = await _sb_client.from('scan_issues')
-        .select('id')
-        .eq('client_code', clientCode)
-        .eq('type', 'fixed')
-        .gte('scanned_at', _mStart)
-        .lt('scanned_at', _mEnd);
-      if (!_fixR.error && _fixR.data && _fixR.data.length > 0) fixes = _fixR.data.length;
+      if (!_siR.error && _siR.data && _siR.data.length) {
+        hasScanIssues = true;
+
+        // Deduplicate by criterion+type — one row per element in DB; we want unique types
+        var _seen = {};
+        var _uniq = [];
+        _siR.data.forEach(function(r) {
+          var k = r.type + '::' + (r.criterion || '');
+          if (!_seen[k]) {
+            _seen[k] = true;
+            // Normalise level from CRIT_LEVEL map (never trust stored level)
+            _uniq.push({ type: r.type, criterion: r.criterion || '', level: levelOf(r.criterion || '') });
+          }
+        });
+
+        // FIX 1 — Auto-Fixes: count of unique fixed types (not cross-page sum)
+        fixTypes = _uniq.filter(function(r){ return r.type === 'fixed'; }).length;
+        // elements fixed = sum element_count across ALL fixed rows for this month
+        elemFixed = _siR.data
+          .filter(function(r){ return r.type === 'fixed'; })
+          .reduce(function(t,r){ return t + (r.element_count || 1); }, 0);
+
+        critical = _uniq.filter(function(r){ return r.type === 'error'; }).length;
+        warnings = _uniq.filter(function(r){ return r.type === 'warning'; }).length;
+        devFixes = _uniq.filter(function(r){ return r.type === 'error' && r.level === 'A'; }).length;
+
+        // FIX 2 — Score: recomputed from unique issue types (matches generate-audit-report)
+        var nH = _uniq.filter(function(r){ return r.type==='error' && r.level==='A'; }).length;
+        var nM = _uniq.filter(function(r){ return r.type==='error' && r.level==='AA'; }).length;
+        var nW = _uniq.filter(function(r){ return r.type==='warning'; }).length;
+        score = Math.max(0, Math.min(100, 100 - nH*14 - nM*7 - nW*3));
+
+        // FIX 3 — POUR: recomputed per principle with correct A×14 / AA×7 weighting
+        var pourCalc = function(principle) {
+          var rel = _uniq.filter(function(r){ return POUR_MAP[r.criterion] === principle; });
+          var pH = rel.filter(function(r){ return r.type==='error' && r.level==='A'; }).length;
+          var pM = rel.filter(function(r){ return r.type==='error' && r.level==='AA'; }).length;
+          var pW = rel.filter(function(r){ return r.type==='warning'; }).length;
+          return Math.max(0, Math.min(100, 100 - pH*14 - pM*7 - pW*3));
+        };
+        pourP = pourCalc('P');
+        pourO = pourCalc('O');
+        pourU = pourCalc('U');
+        pourR = pourCalc('R');
+      }
     } catch(_) {}
   }
-  var pages    = scan ? (scan._pageCount  ?? (scan.page_url ? 1 : 0)) : 0;
+
+  // If scan_issues returned nothing, fall back to averaged scans table values
+  if (!hasScanIssues && scan) {
+    // Score from scans.score average (less accurate but better than 0)
+    try {
+      var { data: fbScans } = await _sb_client.from('scans')
+        .select('score,critical,warnings,fixes_applied')
+        .eq('client_code', clientCode)
+        .gte('scanned_at', monthStart).lt('scanned_at', monthEnd);
+      if (fbScans && fbScans.length) {
+        var fbMap = {};
+        fbScans.forEach(function(s){ var k = s.page_url || Math.random(); if(!fbMap[k]) fbMap[k]=s; });
+        var fbUniq = Object.values(fbMap);
+        score    = Math.round(fbUniq.reduce(function(t,s){return t+(s.score||0);},0)/fbUniq.length);
+        critical = Math.round(fbUniq.reduce(function(t,s){return t+(s.critical||0);},0)/fbUniq.length);
+        warnings = Math.round(fbUniq.reduce(function(t,s){return t+(s.warnings||0);},0)/fbUniq.length);
+        // For fixes in fallback: use max per-page (not sum) to avoid inflation
+        var perPageFixes = fbUniq.map(function(s){ return s.fixes_applied||0; });
+        fixTypes = perPageFixes.length ? Math.max.apply(null, perPageFixes) : 0;
+      }
+    } catch(_) {}
+    // POUR fallback from scans table averages
+    pourP = scan._pourP || score;
+    pourO = scan._pourO || score;
+    pourU = scan._pourU || score;
+    pourR = scan._pourR || score;
+  }
+
+  var pages    = scan ? (scan._pageCount || (scan.page_url ? 1 : 0)) : 0;
   var lastTime = scan ? fmtDate(scan.scanned_at) : 'Never';
   var scoreSub = scan && scan._monthly
     ? '/ 100 — ' + scan._pageCount + ' page' + (scan._pageCount !== 1 ? 's' : '') + ' this month'
     : '/ 100 — Last scanned ' + lastTime;
 
-  // Overview stat cards — all independent, each updates its own element
+  // Overview stat cards
   var set = function(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; };
   set('stat-score',         score);
   set('stat-score-sub',     scoreSub);
-  set('stat-fixes',         fixes);
-  set('stat-fixes-sub',     fixes > 0 ? (autoFixed > 0 ? autoFixed + ' elements patched' : fixes + ' fix type' + (fixes !== 1 ? 's' : '') + ' applied') : 'None this month');
+  // FIX 1: show unique fix types; sub-label shows elements fixed when available
+  set('stat-fixes',         fixTypes);
+  set('stat-fixes-sub',     fixTypes > 0 ? (elemFixed > 0 ? elemFixed + ' elements fixed' : fixTypes + ' fix type' + (fixTypes !== 1 ? 's' : '') + ' applied') : 'None this month');
   set('stat-critical',      critical);
   set('stat-critical-sub',  critical === 0 ? 'No compliance gaps' : critical + ' gap' + (critical===1?'':'s') + ' found');
   set('stat-warnings',      warnings);
@@ -4321,7 +4392,7 @@ async function populateScanData(clientCode) {
   set('stat-pages',         pages);
   set('stat-pages-sub',     pages > 0 ? 'Scanned this month' : 'No scans yet');
 
-  // WCAG ring
+  // WCAG ring — uses recomputed score
   var pctEl = document.getElementById('wcag-score-pct');
   if (pctEl) pctEl.textContent = score + '%';
   var critSubEl = document.getElementById('wcag-critical-sub');
@@ -4341,17 +4412,12 @@ async function populateScanData(clientCode) {
     ringCircle.setAttribute('stroke', score >= 80 ? '#38d9a9' : score >= 50 ? '#f5a623' : '#f05f5f');
   }
 
-  // WCAG category breakdown bars
-  var cats = [
-    { key: 'perceivable',    idPfx: 'wcag-p' },
-    { key: 'operable',       idPfx: 'wcag-o' },
-    { key: 'understandable', idPfx: 'wcag-u' },
-    { key: 'robust',         idPfx: 'wcag-r' },
-  ];
-  cats.forEach(function(cat) {
-    var val = scan && scan[cat.key] != null ? scan[cat.key] : score;
-    var pe = document.getElementById(cat.idPfx + '-pct');
-    var be = document.getElementById(cat.idPfx + '-bar');
+  // FIX 3: POUR bars — use recomputed values (correct A×14/AA×7 per principle)
+  var pourVals = { 'wcag-p': pourP, 'wcag-o': pourO, 'wcag-u': pourU, 'wcag-r': pourR };
+  Object.keys(pourVals).forEach(function(pfx) {
+    var val = pourVals[pfx] !== null ? pourVals[pfx] : score;
+    var pe = document.getElementById(pfx + '-pct');
+    var be = document.getElementById(pfx + '-bar');
     if (pe) pe.textContent = val + '%';
     if (be) { be.style.width = val + '%'; be.className = 'progress-fill' + (val < 80 ? ' warn' : ''); }
   });
@@ -4367,8 +4433,10 @@ async function populateScanData(clientCode) {
   }
   var critEl = document.getElementById('scan-critical');  if (critEl) critEl.textContent = critical;
   var wEl    = document.getElementById('scan-warnings');   if (wEl)    wEl.textContent    = warnings;
-  var ariaEl = document.getElementById('scan-aria');       if (ariaEl) ariaEl.textContent  = scan && scan._pageCount ? scan._pageCount : (scan ? (scan.aria || 0) : 0);
+  var ariaEl = document.getElementById('scan-aria');       if (ariaEl) ariaEl.textContent  = pages || 0;
   var sEl    = document.getElementById('scan-score');      if (sEl)    sEl.textContent     = score;
+  // Expose fixTypes for baseline viewer scoreWithout calculation
+  populateScanData._lastFixTypes = fixTypes;
 }
 
 
@@ -5185,7 +5253,7 @@ function openStmtModal() {
     <h3>1. About This Policy</h3>
     <p style="font-size:.88rem;color:var(--muted)">This Privacy Policy explains how Accessibility Compliance Canada Inc. collects, uses, discloses, and safeguards personal information in connection with our AODA compliance SaaS platform and our website at accessibilitycompliance.ca.</p>
     <p style="font-size:.88rem;color:var(--muted)">We are subject to the <em>Personal Information Protection and Electronic Documents Act</em> (PIPEDA) and Canada&rsquo;s <em>Anti-Spam Legislation</em> (CASL). By using our Service, you consent to the practices described in this Policy.</p>
-    <p style="font-size:.88rem;color:var(--muted)">Contact our Privacy Officer at: <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a></p>
+    <p style="font-size:.88rem;color:var(--muted)">Contact our Privacy Officer at: <a href="/cdn-cgi/l/email-protection#6e1e0f1c1a000b1c2e0f0d0d0b1d1d070c0702071a170d01031e02070f000d0b400d0f" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="fa8a9b888e949f88ba9b99999f898993989396938e839995978a96939b94999fd4999b">[email&#160;protected]</span></a></p>
     <h3>2. Information We Collect</h3>
     <p style="font-size:.88rem;color:var(--muted)"><strong style="color:var(--text)">Account and Contact:</strong></p>
     <ul style="padding-left:18px;font-size:.88rem;color:var(--muted)">
@@ -5244,7 +5312,7 @@ function openStmtModal() {
       <li><strong style="color:var(--text)">Data Export:</strong> Receive your compliance documents in a portable format</li>
       <li><strong style="color:var(--text)">Complaint:</strong> File a complaint with the Office of the Privacy Commissioner of Canada</li>
     </ul>
-    <p style="font-size:.88rem;color:var(--muted)">To exercise any of these rights, email <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a>. We will respond within <strong style="color:var(--text)">30 days</strong>.</p>
+    <p style="font-size:.88rem;color:var(--muted)">To exercise any of these rights, email <a href="/cdn-cgi/l/email-protection#8dfdecfff9e3e8ffcdeceeeee8fefee4efe4e1e4f9f4eee2e0fde1e4ece3eee8a3eeec" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="1767766563797265577674747264647e757e7b7e636e74787a677b7e76797472397476">[email&#160;protected]</span></a>. We will respond within <strong style="color:var(--text)">30 days</strong>.</p>
     <h3>8. Electronic Communications (CASL)</h3>
     <ul style="padding-left:18px;font-size:.88rem;color:var(--muted)">
       <li><strong style="color:var(--text)">Transactional messages</strong> (invoices, audit reports, account notices, security alerts) &mdash; sent in connection with your existing commercial relationship; do not require separate opt-in.</li>
@@ -5269,7 +5337,7 @@ function openStmtModal() {
     <p style="font-size:.88rem;color:var(--muted)"><strong style="color:var(--text)">Privacy Officer</strong><br>
     Accessibility Compliance Canada Inc.<br>
     Oakville, Ontario, Canada<br>
-    <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a><br>
+    <a href="/cdn-cgi/l/email-protection#41312033352f2433012022222432322823282d283538222e2c312d28202f22246f2220" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="35455447415b5047755456565046465c575c595c414c565a5845595c545b56501b5654">[email&#160;protected]</span></a><br>
     <a href="https://accessibilitycompliance.ca" style="color:#4f8ef7">accessibilitycompliance.ca</a></p>
   </div>
 </div>
@@ -5288,23 +5356,11 @@ function openStmtModal() {
       <li><strong style="color:var(--text)">Color Contrast</strong> &mdash; All text meets WCAG 2.1 AA minimum 4.5:1 contrast ratio.</li>
     </ul>
     <h3>Feedback</h3>
-    <p style="font-size:.88rem;color:var(--muted)"><a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a> &middot; (416) 526-9645<br>We respond to accessibility feedback within 2 business days.</p>
+    <p style="font-size:.88rem;color:var(--muted)"><a href="/cdn-cgi/l/email-protection#3f4f5e4d4b515a4d7f5e5c5c5a4c4c565d5653564b465c50524f53565e515c5a115c5e" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="7707160503191205371614141204041e151e1b1e030e14181a071b1e16191412591416">[email&#160;protected]</span></a> &middot; (416) 526-9645<br>We respond to accessibility feedback within 2 business days.</p>
   </div>
 </div>
 <div id="legal-contact-modal" class="modal-overlay" role="dialog" aria-modal="true">
   <div class="modal-box">
     <button class="modal-close" onclick="closeModal('legal-contact-modal')" aria-label="Close">&times;</button>
     <h2>Contact Us</h2>
-    <p style="font-size:.8rem;color:var(--muted);margin-bottom:16px">Accessibility Compliance Canada Inc. &middot; Oakville, Ontario, Canada</p>
-    <h3>Address</h3>
-    <p style="font-size:.88rem;color:var(--muted)">2150 Winston Park Dr, Unit 203, PMB#3018<br>Oakville, ON L6H 5V1</p>
-    <h3>Email</h3>
-    <p style="font-size:.88rem"><a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a></p>
-    <h3>Phone</h3>
-    <p style="font-size:.88rem;color:var(--muted)">(416) 526-9645<br>(647) 896-9132</p>
-    <h3>Website</h3>
-    <p style="font-size:.88rem"><a href="https://accessibilitycompliance.ca" style="color:#4f8ef7">accessibilitycompliance.ca</a></p>
-  </div>
-</div>
-</body>
-</html>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:16px">Accessibility Comp
