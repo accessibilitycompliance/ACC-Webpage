@@ -2194,17 +2194,7 @@ async function addClient() {
     });
     if (tierEl) tierEl.value = '1';
 
-    // Generate pending invoice for new admin-created client (no card required yet)
-    var ncTierVal = parseInt(tier) || 1;
-    if (ncTierVal !== 3) {  // Tier 3 = one-time/enterprise — invoice manually
-      fetch(SUPABASE_URL + '/functions/v1/generate-invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-        body: JSON.stringify({ client_id: r.data.id, initialStatus: 'pending', skipEmail: true })
-      }).catch(function() {});
-    }
-
-    showToastAdmin('Client ' + name + ' created (' + code + ') — pending invoice generated.', 'success');
+    showToastAdmin('Client ' + name + ' created (' + code + '). Send them a Card Setup Link to start billing.', 'success');
 
     // Queue baseline report generation if domain provided (non-blocking)
     if (domain) {
@@ -2451,7 +2441,12 @@ async function openClientEditor(btn) {
 
   } catch(e) {
     console.error('openClientEditor load:', e);
-    document.getElementById('client-modal-title').textContent = '✎ Edit Client';
+    // Close zombie modal and show error — don't leave it open with no content
+    var modal = document.getElementById('client-detail-modal');
+    if (modal) modal.style.display = 'none';
+    document.body.style.overflow = '';
+    _editingClientId = null;
+    showToastAdmin('Could not load client: ' + (e.message || e) + ' — please refresh and try again.', 'error');
   }
 }
 
