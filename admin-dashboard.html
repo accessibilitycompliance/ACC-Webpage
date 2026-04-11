@@ -1550,15 +1550,7 @@ async function sendSetupLink() {
       showToastAdmin('Email failed: ' + (emailErr.message || emailErr) + ' — link still copied to clipboard.', 'warn');
     }
 
-    // Log to billing as pending — flat try/catch (Supabase never rejects promises)
-    try {
-      await _sb.from('billing').insert({
-        client_id: clientId,
-        amount:    amount,
-        status:    'pending',
-        description: 'Payment setup link sent to ' + cl.email,
-      });
-    } catch(_) {} // non-fatal
+    // Billing row created by Stripe webhook on invoice.payment_succeeded — not created here
 
   } catch(e) {
     showToastAdmin('Failed to send setup link: ' + (e.message || e), 'error');
@@ -3461,9 +3453,16 @@ async function sendLoginInvite(email, name, clientId) {
     console.log('send-client-invite raw response:', r.status, rawText);
     var res;
     try { res = JSON.parse(rawText); } catch(pe) { throw new Error('HTTP ' + r.status + ': ' + rawText.substring(0,200)); }
-    // 409 = user already exists but we still got a magic link — treat as success
-    if (!r.ok && r.status !== 409) throw new Error('HTTP ' + r.status + ' — ' + (res.error || res.message || rawText.substring(0,200)));
-    if (res.error && r.status !== 409) throw new Error(res.error);
+    // Handle email_exists: user already has an account — edge fn generates magic link for them
+    var emailExistsErr = !r.ok && (r.status === 400 || r.status === 409) &&
+      (rawText.includes('email_exists') || rawText.includes('already been registered'));
+    if (!r.ok && !emailExistsErr) throw new Error('HTTP ' + r.status + ' — ' + (res.error || res.message || rawText.substring(0,200)));
+    if (res.error && !emailExistsErr) throw new Error(res.error);
+    // If email_exists but no login_link in response, the edge fn didn't handle it — show helpful message
+    if (emailExistsErr && !res.login_link) {
+      showToastAdmin('This client already has a login account. Use Send Setup Link to send them a card entry link instead.', 'warn');
+      return;
+    }
 
     if (res.login_link) {
       var linkModal = document.getElementById('invite-link-modal');
