@@ -718,8 +718,7 @@ Scores show <em>site today → with widget applied</em>.
           <div class="fgroup" style="margin:0"><label>Recurring Price ($)</label>
             <input class="finput" id="nc-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
           <div class="fgroup" style="margin:0"><label>Recurring Cycle</label>
-            <select class="finput" id="nc-bespoke-cycle"><option value="monthly" selected>Monthly</option><option value="annual">Annual</option></select></div>
-        </div>
+                    </div>
       </div>
       <div id="nc-bespoke-hint" style="font-size:.7rem;color:#8a9bbf;margin-top:8px"></div>
     </div>
@@ -2383,7 +2382,7 @@ async function openClientEditor(btn) {
           var code = window._editingClientCode || '';
           var rows = br.data.map(function(b) {
             var ym = (b.period ? b.period.substring(0,7) : (b.paid_at||b.created_at||'').substring(0,7));
-            var filePathHtml = code + '/' + ym + '-invoice.html';
+            var filePathHtml = b.file_path || (code + '/' + ym + '-invoice.html');
             // PDF button: auto-generates if file not found
             var dlBtn = ym
               ? '<button class="btn-sm btn-ghost" style="padding:3px 8px;font-size:.7rem" data-bucket="invoices" data-path="' + filePathHtml + '" data-ym="' + ym + '" data-code="' + esc(code) + '" onclick="adminViewInvoice(this)">&#8659; PDF</button>'
@@ -2411,8 +2410,9 @@ async function openClientEditor(btn) {
     })();
     var cycleSel = document.getElementById('ce-cycle');
     if (cycleSel && c.billing_cycle) {
+      cycleSel.value = c.billing_cycle;
       for (var ci=0; ci<cycleSel.options.length; ci++) {
-        if (cycleSel.options[ci].text.toLowerCase() === c.billing_cycle.toLowerCase()) {
+        if (cycleSel.options[ci].value === (c.billing_cycle||'monthly')) {
           cycleSel.selectedIndex = ci; break;
         }
       }
@@ -2519,6 +2519,7 @@ async function saveClientInfo() {
       email:            email,
       phone:            phone  || null,
       tier:             tier,
+      billing_cycle:    (document.getElementById('ce-cycle')||{value:'monthly'}).value || 'monthly',
       status:           status,
       billing_type:     billingType,
       widget_active:    widgetActiveEl ? widgetActiveEl.checked : true,
@@ -3319,7 +3320,7 @@ async function generateInvoiceForClient() {
       + '<div style="font-size:.75rem;color:#6b7280">'+tierLabel+'</div>'
       + '<div style="font-size:.75rem;color:#6b7280">'+_esc(code)+'</div></div></div>'
       + '<table><thead><tr><th>Description</th><th>Amount</th></tr></thead><tbody>'
-      + '<tr><td>ACC Managed Accessibility Compliance — '+tierLabel+'<br><span style="font-size:.72rem;color:#6b7280">'+(isAnnual?'Annual plan (10 months billed)':'Monthly plan')+'</span></td><td>$'+amount.toFixed(2)+'</td></tr>'
+      + '<tr><td>ACC Managed Accessibility Compliance — '+tierLabel+'<br><span style="font-size:.72rem;color:#6b7280">'+(isAnnual?'Annual plan — 12 months (2 months free)':'Monthly plan')+'</span></td><td>$'+amount.toFixed(2)+'</td></tr>'
       + '</tbody></table>'
       + '<div style="padding:16px 32px;border-top:1px solid #e5e7eb">'
       + '<div style="display:flex;justify-content:flex-end;gap:32px;font-size:.88rem;margin-bottom:6px"><span style="color:#6b7280">Subtotal</span><span>$'+amount.toFixed(2)+'</span></div>'

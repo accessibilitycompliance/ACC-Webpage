@@ -894,12 +894,13 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
             <div>
               <strong style="font-size:1rem;color:var(--white)" id="acc-tier">—</strong>
               <div style="font-size:.8rem;color:var(--muted)" id="acc-tier-desc">—</div>
+              <div id="acc-tier-note" style="font-size:.72rem;color:#f5a623;margin-top:2px;display:none">Tier change takes effect at next renewal</div>
             </div>
             <span class="pill green" id="acc-status">Active</span>
           </div>
           <div style="font-family:var(--mono);font-size:1.6rem;font-weight:700;color:#fff;margin-bottom:4px"><span id="acc-price">—</span> <span style="font-size:.85rem;font-weight:400;color:var(--muted)" id="acc-billing-cadence">CAD / month</span></div>
           <div id="acc-bespoke-note" style="font-size:.75rem;color:#f5a623;display:none"></div>
-          <div id="acc-setup-note" style="font-size:.75rem;color:#38d9a9;margin-bottom:2px"></div>
+
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:4px"><span id="acc-renewal-label">Next billing:</span> <span id="acc-renewal">—</span></div>
           <div style="font-size:.78rem;color:var(--muted);margin-bottom:20px">Start date: <span id="acc-start-date">—</span></div>
           <div class="btn-row">
@@ -977,14 +978,10 @@ h1,h2,h3,h4,h5,h6{color:#fff !important}
       <div class="card">
         <h2>&#128179; Payment Method</h2>
         <div id="card-display" style="background:rgba(10,22,40,.8);border:1px solid rgba(30,58,107,.6);border-radius:10px;padding:16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div style="background:#1a3060;border-radius:6px;padding:6px 10px;font-size:.75rem;font-weight:700;color:#4f8ef7;letter-spacing:.04em">VISA</div>
-            <div>
-              <div style="font-size:.88rem;font-weight:600">•••• •••• •••• 4242</div>
-              <div style="font-size:.75rem;color:#8a9bbf">Expires 08 / 2028 &nbsp;&bull;&nbsp; —</div>
-            </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="background:#1a3060;border-radius:6px;padding:6px 10px;font-size:.75rem;font-weight:700;color:#8a9bbf;letter-spacing:.04em">CARD</div>
+            <div style="font-size:.82rem;color:#8a9bbf">No payment card on file — click Update Card to add one.</div>
           </div>
-          <span class="pill green" style="font-size:.72rem">Default</span>
         </div>
         <div id="billing-address-display" style="font-size:.78rem;color:#8a9bbf;margin-bottom:10px;min-height:16px"></div>
         <div class="btn-row">
@@ -2205,6 +2202,8 @@ async function saveCard() {
 
     // Step 4: Update local data + display
     _clientData.card_last4  = updData.last4;
+    // Re-fetch client to get fresh card data
+    try { var rf = await _sb_client.from('clients').select('*').eq('id',_clientData.id).single(); if(!rf.error&&rf.data){_clientData=rf.data;window._clientData=rf.data;} } catch(_){}
     _clientData.card_expiry = updData.expiry;
     window._clientData = _clientData;
     var brandLabel = (updData.brand || 'card').toUpperCase();
@@ -2461,15 +2460,17 @@ function tierName(t) {
 
 function tierPrice(t, clientData) {
   var n = parseInt(t) || t;
+  var c = clientData || window._clientData;
+  var cycle = c ? (c.billing_cycle || 'monthly') : 'monthly';
+  var isAnnual = (cycle === 'annual' || cycle === 'yearly');
   if (n===4 || t==='tier4') {
-    // Bespoke: show recurring price from client data if available
-    var c = clientData || window._clientData;
-    var p = c && c.bespoke_recurring_price != null ? c.bespoke_recurring_price : null;
-    return p != null ? '$' + parseFloat(p).toFixed(2) : 'Custom';
+    var p = c && c.bespoke_recurring_price != null ? parseFloat(c.bespoke_recurring_price) : null;
+    if (p == null) return 'Custom';
+    return '$' + (isAnnual ? (p * 10).toFixed(2) : p.toFixed(2));
   }
-  return (n===1||t==='tier1') ? '$69'
-       : (n===2||t==='tier2') ? '$199'
-       : 'Custom';
+  var base = (n===1||t==='tier1') ? 69 : (n===2||t==='tier2') ? 199 : 0;
+  if (!base) return 'Custom';
+  return '$' + (isAnnual ? (base * 10).toFixed(2) : base.toFixed(2));
 }
 
 function set(id, val) {
@@ -2870,12 +2871,16 @@ function populateAccount(c, billingRows) {
     4: 'Bespoke — custom pricing & terms',
   };
   set('acc-tier-desc', tierDescs[parseInt(c.tier)] || '');
+  // Tier-change note: if billing_type is 'recurring' and there's an active sub,
+  // admin tier changes take effect at next renewal — show informational note
+  var tierNoteEl = document.getElementById('acc-tier-note');
+  if (tierNoteEl) tierNoteEl.style.display = 'none'; // clear previous
   var effectiveCycle = c.billing_cycle || 'monthly';
   var cycleLabel = (effectiveCycle === 'annual' || effectiveCycle === 'yearly') ? 'Annual' : 'Monthly';
   var renewalEl = document.getElementById('acc-renewal-label');
   if (renewalEl) renewalEl.textContent = (c.status === 'cancelled' ? 'Access until:' : 'Next ' + cycleLabel + ' billing:');
   var cadenceEl = document.getElementById('acc-billing-cadence');
-  if (cadenceEl) cadenceEl.textContent = 'CAD / ' + cycleLabel.toLowerCase();
+  if (cadenceEl) cadenceEl.textContent = cycleLabel === 'Annual' ? 'CAD / year' : 'CAD / month';
   // Bespoke: show setup fee note if applicable
   var bespokeNote = document.getElementById('acc-bespoke-note');
   if (bespokeNote) {
@@ -2885,12 +2890,7 @@ function populateAccount(c, billingRows) {
     } else { bespokeNote.style.display = 'none'; }
   }
   set('acc-price', tierPrice(c.tier, c));
-  // Bespoke: also show setup price if applicable
-  var setupNote = document.getElementById('acc-setup-note');
-  if (setupNote) {
-    setupNote.textContent = (c.tier==4 && c.bespoke_setup_price>0)
-      ? '+ $'+parseFloat(c.bespoke_setup_price).toFixed(2)+' one-time setup fee' : '';
-  }
+  // acc-setup-note removed — acc-bespoke-note handles setup fee display
   set('acc-renewal', fmtDateLong(c.renewal_date));
   set('acc-start-date', c.start_date ? fmtDateLong(c.start_date) : '—');
   var statusText = (c.status || 'active').charAt(0).toUpperCase() + (c.status || 'active').slice(1);
@@ -2954,6 +2954,25 @@ function populateAccount(c, billingRows) {
   loadInvoiceHistory(c);
 }
 
+// Open invoice PDF — uses stored file_path for exact match
+async function viewInvoiceByPath(btn) {
+  var pdfPath = btn.dataset.filepath;
+  var ym = btn.dataset.ym;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    if (pdfPath) {
+      var sr = await _sb_client.storage.from('invoices').createSignedUrl(pdfPath, 300);
+      if (!sr.error) {
+        var res = await fetch(sr.data.signedUrl);
+        if (res.ok) { var html = await res.text(); var w = window.open('','_blank'); if(w){w.document.open();w.document.write(html);w.document.close();} btn.disabled=false;btn.textContent='↓ PDF';return; }
+      }
+    }
+    // Fallback: generate by ym
+    if (ym) await generateAndDownloadInvoice(ym);
+  } catch(e) { console.warn('viewInvoiceByPath:', e); }
+  finally { btn.disabled=false; btn.textContent='↓ PDF'; }
+}
+
 async function loadInvoiceHistory(c) {
   var tbody = document.getElementById('billing-history-tbody');
   if (!tbody) return;
@@ -2988,6 +3007,7 @@ async function loadInvoiceHistory(c) {
   } else {
     rawPrice = parseInt((tierPrice(c.tier)||'0').replace(/[^0-9]/g,'')) || 0;
   }
+  // Annual: charge 10 months but label as 12-month plan (2 months free)
   var amount = isAnnual ? rawPrice * 10 : rawPrice;
   // Fetch billing rows to get accurate status per period
   var billingByYM = {};
@@ -3050,9 +3070,12 @@ function populateBillingHistory(rows) {
     if (st === 'failed' && b.failure_reason) {
       pillHtml += ' <span style="font-size:.65rem;color:#f05f5f;display:block;margin-top:2px">' + esc(b.failure_reason) + '</span>';
     }
-    // PDF button — use invoice_no if available, otherwise fall back to ym
-    var dlBtn = ym
-      ? '<button class="btn-sm btn-ghost" style="font-size:.72rem;padding:3px 8px" data-ym="' + ym + '" onclick="generateAndDownloadInvoice(this.dataset.ym)">&#8659; PDF</button>'
+    // PDF button: prefer file_path from billing row for exact match
+    var pdfPath = b.file_path || null;
+    var dlBtn = (ym || pdfPath)
+      ? '<button class="btn-sm btn-ghost" style="font-size:.72rem;padding:3px 8px"'
+        + (pdfPath ? ' data-filepath="' + esc(pdfPath) + '"' : '') 
+        + ' data-ym="' + ym + '" onclick="viewInvoiceByPath(this)">&#8659; PDF</button>'
       : '';
     return '<tr>'
       + '<td>' + dateLabel + '</td>'
