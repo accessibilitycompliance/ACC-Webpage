@@ -717,6 +717,7 @@ Scores show <em>site today → with widget applied</em>.
             <input class="finput" id="nc-bespoke-setup" type="number" min="0" step="0.01" placeholder="0.00"></div>
           <div class="fgroup" style="margin:0"><label>Recurring Price ($)</label>
             <input class="finput" id="nc-bespoke-recurring" type="number" min="0" step="0.01" placeholder="0.00"></div>
+        </div>
       </div>
       <div id="nc-bespoke-hint" style="font-size:.7rem;color:#8a9bbf;margin-top:8px"></div>
     </div>
@@ -3460,7 +3461,9 @@ async function sendLoginInvite(email, name, clientId) {
     console.log('send-client-invite raw response:', r.status, rawText);
     var res;
     try { res = JSON.parse(rawText); } catch(pe) { throw new Error('HTTP ' + r.status + ': ' + rawText.substring(0,200)); }
-    if (!r.ok || res.error) throw new Error('HTTP ' + r.status + ' — ' + (res.error || res.message || rawText.substring(0,200)));
+    // 409 = user already exists but we still got a magic link — treat as success
+    if (!r.ok && r.status !== 409) throw new Error('HTTP ' + r.status + ' — ' + (res.error || res.message || rawText.substring(0,200)));
+    if (res.error && r.status !== 409) throw new Error(res.error);
 
     if (res.login_link) {
       var linkModal = document.getElementById('invite-link-modal');
