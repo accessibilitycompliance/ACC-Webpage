@@ -1897,8 +1897,9 @@ async function confirmCancel() {
       headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
       body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
     });
-    var cancelDbData = await cancelDbRes.json();
-    if (cancelDbData.error) throw new Error(cancelDbData.error);
+    var cancelDbText = await cancelDbRes.text();
+    var cancelDbData; try { cancelDbData = JSON.parse(cancelDbText); } catch(_) { cancelDbData = {}; }
+    if (!cancelDbRes.ok || cancelDbData.error) throw new Error(cancelDbData.error || 'HTTP ' + cancelDbRes.status + ': ' + cancelDbText.slice(0,100));
 
     // 2. Cancel Stripe subscription at period end (non-blocking)
     // cancel_at_period_end=true means client keeps access until renewal, then no charge
@@ -4076,7 +4077,21 @@ async function generateAndDownloadInvoice(yearMonth) {
   var code = c.client_code;
   var ym   = yearMonth || (new Date().getFullYear() + '-' + String(new Date().getMonth()+1).padStart(2,'0'));
 
-  // 1. Try storage first (pre-generated invoices from edge function)
+  // 1. Check billing table for exact file_path (handles timestamped filenames)
+  try {
+    var period = ym + '-01';
+    var brow = await _sb_client.from('billing').select('file_path')
+      .eq('client_id', c.id)
+      .gte('period', ym + '-01').lt('period', ym.slice(0,4) + '-' + String(parseInt(ym.slice(5,7))+1).padStart(2,'0') + '-01')
+      .not('file_path', 'is', null).order('created_at', {ascending:false}).limit(1);
+    if (brow.data && brow.data.length && brow.data[0].file_path) {
+      await openHtmlReport('invoices', brow.data[0].file_path);
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      return;
+    }
+  } catch(_) {}
+
+  // 2. Try legacy storage paths (pre-timestamp filenames)
   var storagePaths = [
     ['invoices', code + '/' + ym + '-invoice.html'],
     ['invoices', code + '/' + ym + '-invoice.pdf'],

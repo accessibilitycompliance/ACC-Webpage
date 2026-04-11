@@ -1618,10 +1618,10 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
 
     if (bSetup > 0) {
       try {
-        var ir = await fetch(SUPABASE_URL + '/functions/v1/create-stripe-invoice', {
+        var ir = await fetch(SUPABASE_URL + '/functions/v1/generate-invoice', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-          body: JSON.stringify({ client_id: client.id, amount: bSetup, invoiceSuffix: 'setup', initialStatus: 'pending' })
+          body: JSON.stringify({ client_id: client.id, amount: bSetup, invoiceSuffix: 'setup', initialStatus: 'pending', skipEmail: false })
         });
         var ires = await ir.json();
         if (ires.error) showToastAdmin('Setup invoice warning: ' + ires.error, 'warn');
