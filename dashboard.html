@@ -1892,23 +1892,25 @@ async function confirmCancel() {
   try {
     // 1. Mark cancelled in DB
     // Route through update-subscription edge function to bypass RLS status restriction
-    var cancelDbRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
-      body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
-    });
-    var cancelDbText = await cancelDbRes.text();
-    var cancelDbData; try { cancelDbData = JSON.parse(cancelDbText); } catch(_) { cancelDbData = {}; }
-    if (!cancelDbRes.ok || cancelDbData.error) throw new Error(cancelDbData.error || 'HTTP ' + cancelDbRes.status + ': ' + cancelDbText.slice(0,100));
-    // Verify the status actually saved by re-reading from DB
+    // Direct DB update using user's session JWT (RLS allows user to update own row)
+    var cancelUpdate = await _sb_client.from('clients')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', _clientData.id);
+    if (cancelUpdate.error) {
+      // RLS may block status update — try via edge function with service role
+      var cancelDbRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
+        body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
+      });
+      var cancelDbText = await cancelDbRes.text();
+      var cancelDbData; try { cancelDbData = JSON.parse(cancelDbText); } catch(_) { cancelDbData = {}; }
+      if (!cancelDbRes.ok || cancelDbData.error) throw new Error(cancelDbData.error || 'HTTP ' + cancelDbRes.status + ': ' + cancelDbText.slice(0,100));
+    }
+    // Confirm write by re-reading
     var verifyRow = await _sb_client.from('clients').select('status').eq('id', _clientData.id).single();
     if (!verifyRow.error && verifyRow.data && verifyRow.data.status !== 'cancelled') {
-      // Edge function returned success but DB wasn't updated — try direct update as fallback
-      var directUpdate = await _sb_client.from('clients')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-        .eq('id', _clientData.id)
-        .eq('auth_user_id', _clientData.auth_user_id);
-      if (directUpdate.error) throw new Error('Cancel could not be saved: ' + directUpdate.error.message);
+      throw new Error('Cancellation could not be saved. Please contact support.');
     }
 
     // 2. Cancel Stripe subscription at period end (non-blocking)

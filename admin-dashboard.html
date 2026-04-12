@@ -3458,9 +3458,21 @@ async function sendLoginInvite(email, name, clientId) {
       (rawText.includes('email_exists') || rawText.includes('already been registered'));
     if (!r.ok && !emailExistsErr) throw new Error('HTTP ' + r.status + ' — ' + (res.error || res.message || rawText.substring(0,200)));
     if (res.error && !emailExistsErr) throw new Error(res.error);
-    // If email_exists but no login_link in response, the edge fn didn't handle it — show helpful message
+    // If email_exists but no login_link, synthesise a login link from the site URL
     if (emailExistsErr && !res.login_link) {
-      showToastAdmin('This client already has a login account. Use Send Setup Link to send them a card entry link instead.', 'warn');
+      var loginUrl = 'https://accessibilitycompliance.ca/login.html';
+      var linkModal = document.getElementById('invite-link-modal');
+      if (linkModal) {
+        var urlEl   = document.getElementById('invite-link-url');
+        var emailEl = document.getElementById('invite-link-email');
+        if (urlEl)   urlEl.value = loginUrl;
+        if (emailEl) emailEl.textContent = email;
+        linkModal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      } else {
+        prompt('Client already has an account. Share this login URL:', loginUrl);
+      }
+      showToastAdmin('Account already exists for ' + email + ' — share the login link below.', 'info');
       return;
     }
 
