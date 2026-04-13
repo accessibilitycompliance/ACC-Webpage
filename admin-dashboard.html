@@ -3773,7 +3773,25 @@ function runAdminScan() {
     clearTimeout(crawlTimeout);
     if (!data.pages || !data.pages.length) throw new Error('no pages returned');
 
-    var pages = data.pages;
+    // FIX 1: filter out 404/error pages before scanning
+    // scrape-url returns status on each page — reject non-2xx, error pages, and stubs.
+    // Without this, a 404 page produces a fake "legitimate" scan result.
+    function isRealPage(pg) {
+      if (!pg.html) return false;
+      if (pg.status && (pg.status < 200 || pg.status >= 300)) return false;
+      if (pg.html.length < 200) return false;
+      var titleMatch = pg.html.match(/<title[^>]*>([^<]{0,120})<\/title>/i);
+      var titleText  = titleMatch ? titleMatch[1].toLowerCase().trim() : '';
+      var errorTitles = ['404','not found','403','forbidden','500','error','access denied','page not found','oops'];
+      if (errorTitles.some(function(t){ return titleText.indexOf(t) >= 0; })) return false;
+      var bodyMatch = pg.html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      var bodyText  = bodyMatch ? bodyMatch[1].replace(/<[^>]+>/g,'').trim() : '';
+      if (bodyText.length < 50) return false;
+      return true;
+    }
+
+    var pages = data.pages.filter(isRealPage);
+    if (!pages.length) throw new Error('no valid pages — all returned 404 or error responses');
     var totalFound = data.totalFound || pages.length;
     var sitemapUsed = data.sitemapUrl ? ' via sitemap' : ' via link discovery';
     setProgress(30, 'Scanning ' + pages.length + ' pages…', 'Found ' + totalFound + ' pages' + sitemapUsed);
@@ -4104,8 +4122,13 @@ function downloadAdminScanReport() {
   var nGapsMed    = gapsAll.filter(function(i){return i.level==='AA'||!i.level;}).length;
   var nGaps       = nGapsHigh + nGapsMed;
   var now         = new Date().toLocaleDateString('en-CA',{year:'numeric',month:'long',day:'numeric'});
+  // FIX 4: autoFixImpact fallback — only recalculate when the stored delta is
+  // genuinely missing (score === scoreWithout means data-raw was never set).
+  // Previously the fallback always overwrote scoreWithout even when it was valid,
+  // causing the before/after strip to show an incorrect "without widget" value.
   var autoFixImpact = score - scoreWithout;
-  if (autoFixImpact <= 0 && nFixed > 0) {
+  if (score === scoreWithout && nFixed > 0) {
+    // data-raw was not set (old scan or direct call) — derive from issue levels
     var _fA = issues.filter(function(i){return i.type==='fixed'&&i.level==='A';}).length;
     var _fAA= issues.filter(function(i){return i.type==='fixed'&&(i.level==='AA'||!i.level);}).length;
     autoFixImpact = _fA*14 + _fAA*7;
@@ -4128,21 +4151,27 @@ function downloadAdminScanReport() {
 
   function escHtml(s){var d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML;}
 
-  // POUR scores — same criteria as UI
-  var pourCriteria = [
-    {label:'Perceivable',    crit:['1.1.1','1.3.1','1.4.3','1.4.5']},
-    {label:'Operable',       crit:['2.1.1','2.4.1','2.4.2','2.4.4']},
-    {label:'Understandable', crit:['3.1.1','3.3.1','3.3.2']},
-    {label:'Robust',         crit:['4.1.1','4.1.2']},
-  ];
-  var pourHTML = pourCriteria.map(function(pc){
-    var eH=issues.filter(function(i){return i.type==='error'&&i.level==='A'&&pc.crit.indexOf(i.criterion)>=0;}).length;
-    var eM=issues.filter(function(i){return i.type==='error'&&(i.level==='AA'||!i.level)&&pc.crit.indexOf(i.criterion)>=0;}).length;
-    var ps=Math.max(0,Math.min(100,Math.round(100-eH*14-eM*7)));
-    var pc2=ps>=80?'#065f46':ps>=60?'#92400e':'#991b1b';
+  // FIX 2: POUR — full criterion list matching calcPour() in generate-audit-report.
+  // Previously used a partial list that omitted many criteria (1.2.x, 1.3.4, 1.4.x, 2.3.x, etc.)
+  // causing POUR scores to be higher than the monthly report shows.
+  // Also now uses correct A×14 / AA×7 weighting (was treating all as A×14 before).
+  var pourMap = {
+    'P':['1.1.1','1.2.1','1.2.2','1.3.1','1.3.4','1.3.5','1.4.1','1.4.2','1.4.3','1.4.4','1.4.5','1.4.10','1.4.11','1.4.12'],
+    'O':['2.1.1','2.1.2','2.2.2','2.3.1','2.4.1','2.4.2','2.4.3','2.4.4','2.4.7','2.5.5'],
+    'U':['3.1.1','3.2.1','3.3.1','3.3.2'],
+    'R':['4.1.1','4.1.2']
+  };
+  var pourLabels = {P:'Perceivable',O:'Operable',U:'Understandable',R:'Robust'};
+  var pourHTML = ['P','O','U','R'].map(function(key){
+    var crit = pourMap[key];
+    var eH = issues.filter(function(i){return i.type==='error'&&i.level==='A'&&crit.indexOf(i.criterion)>=0;}).length;
+    var eM = issues.filter(function(i){return i.type==='error'&&(i.level==='AA'||!i.level)&&crit.indexOf(i.criterion)>=0;}).length;
+    var eW = issues.filter(function(i){return i.type==='warning'&&i.criterion&&i.criterion.indexOf('.')>=0&&crit.indexOf(i.criterion)>=0;}).length;
+    var ps = Math.max(0,Math.min(100,Math.round(100-eH*14-eM*7-eW*3)));
+    var pc2 = ps>=80?'#065f46':ps>=60?'#92400e':'#991b1b';
     return '<div style="padding:14px;text-align:center;border-right:1px solid #e5e7eb">'
       +'<div style="font-size:1.4rem;font-weight:700;color:'+pc2+'">'+ps+'</div>'
-      +'<div style="font-size:.65rem;text-transform:uppercase;color:#8a9bbf;letter-spacing:.06em">'+pc.label+'</div>'
+      +'<div style="font-size:.65rem;text-transform:uppercase;color:#8a9bbf;letter-spacing:.06em">'+pourLabels[key]+'</div>'
       +'</div>';
   }).join('');
 
@@ -4350,9 +4379,9 @@ function downloadProspectReport() {
     return sum + (i.elements && i.elements.length ? i.elements.length : 1);
   }, 0);
   if (totalElementsFixed < nFixed) totalElementsFixed = nFixed;
+  // FIX 4: only recalculate when data-raw was never stored (score === scoreWithout)
   var autoFixImpact = score - scoreWithout;
-  // Fallback: if formula gives 0 but fixed issues exist, estimate from count
-  if (autoFixImpact <= 0 && nFixed > 0) {
+  if (score === scoreWithout && nFixed > 0) {
     var _fixA  = issues.filter(function(i){return i.type==='fixed'&&i.level==='A';}).length;
     var _fixAA = issues.filter(function(i){return i.type==='fixed'&&(i.level==='AA'||!i.level);}).length;
     autoFixImpact = _fixA * 14 + _fixAA * 7;
@@ -4367,10 +4396,11 @@ function downloadProspectReport() {
     ? pagesScanned + ' pages scanned' + (sitemapUsed ? ' via sitemap' : ' via link crawl')
     : '1 page (homepage only)';
 
-  var scoreColor   = score>=80?'#065f46':score>=60?'#b45309':'#b91c1c';
-  var riskLevel    = score>=80 ? 'Low Risk' : score>=60 ? 'Medium Risk' : 'High Risk';
-  var riskColor    = score>=80?'#065f46':score>=60?'#b45309':'#b91c1c';
-  var riskBg       = score>=80?'#d1fae5':score>=60?'#fef3c7':'#fee2e2';
+  // FIX 3: risk assessment based on current site score (no widget), not projected score
+  var scoreColor   = scoreWithout>=80?'#065f46':scoreWithout>=60?'#b45309':'#b91c1c';
+  var riskLevel    = scoreWithout>=80 ? 'Low Risk' : scoreWithout>=60 ? 'Medium Risk' : 'High Risk';
+  var riskColor    = scoreWithout>=80?'#065f46':scoreWithout>=60?'#b45309':'#b91c1c';
+  var riskBg       = scoreWithout>=80?'#d1fae5':scoreWithout>=60?'#fef3c7':'#fee2e2';
 
   function escHtml(s){var d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML;}
 
@@ -4487,7 +4517,7 @@ function downloadProspectReport() {
 
     // ── Score grid ──────────────────────────────────────────────────────────
     +'<div class="score-grid">'
-    +'<div class="score-cell"><div class="score-num" style="color:'+scoreColor+'">'+score+'<span style="font-size:1rem;font-weight:400;color:#94a3b8">/100</span></div><div class="score-lbl">Compliance Score</div></div>'
+    +'<div class="score-cell"><div class="score-num" style="color:'+(scoreWithout>=80?'#065f46':scoreWithout>=60?'#b45309':'#b91c1c')+'">'+scoreWithout+'<span style="font-size:1rem;font-weight:400;color:#94a3b8">/100</span></div><div class="score-lbl">Current Score</div></div>'
     +'<div class="score-cell"><div class="score-num" style="color:#10b981">'+totalElementsFixed+'</div><div class="score-lbl">Elements Fixed Instantly</div></div>'
     +'<div class="score-cell"><div class="score-num" style="color:#ef4444">'+(nErr+nDev)+'</div><div class="score-lbl">Issues Found</div></div>'
     +'<div class="score-cell"><div class="score-num" style="color:#f59e0b">'+nWarn+'</div><div class="score-lbl">Warnings</div></div>'
