@@ -1630,7 +1630,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
           var ur = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-            body: JSON.stringify({ client_id: client.id, tier: 4, billing_cycle: bCycle, bespoke_price: bRecurring, action: hasSub ? 'update' : 'create' })
+            body: JSON.stringify({ client_id: client.id, tier: 4, billing_cycle: bCycle, bespoke_price: bRecurring, action: hasSub ? 'update' : 'create', start_date: client.start_date || null })
           });
           var ures = await ur.json();
           if (ures.error) showToastAdmin('Subscription warning: ' + ures.error, 'warn');
@@ -1653,7 +1653,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
         var cr2 = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-          body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'create' })
+          body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'create', start_date: client.start_date || null })
         });
         var cr2res = await cr2.json();
         if (cr2res.error) showToastAdmin('Could not create subscription: ' + cr2res.error, 'error');
@@ -1667,7 +1667,7 @@ async function handleTierBillingChange(client, newTier, bSetup, bRecurring, bTri
       var ur2 = await fetch(SUPABASE_URL + '/functions/v1/update-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-        body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'update' })
+        body: JSON.stringify({ client_id: client.id, tier: newTier, billing_cycle: client.billing_cycle || 'monthly', action: 'update', start_date: client.start_date || null })
       });
       var ur2res = await ur2.json();
       if (ur2res.error) showToastAdmin('Update warning: ' + ur2res.error, 'warn');
@@ -1711,10 +1711,21 @@ async function adminViewInvoice(btn) {
   // File not found — generate it now
   try {
     showToastAdmin('Generating invoice…', 'info');
+    var invoiceBody = { client_code: code, month: ym };
+    // For custom invoices: pass amount and description so the PDF matches the billing row
+    var bAmount = parseFloat(btn.dataset.amount || '0');
+    var bDesc   = btn.dataset.desc || '';
+    var bNo     = btn.dataset.invoiceNo || '';
+    if (bAmount > 0) {
+      // Back-calculate pre-tax amount (amount in DB is total inc. HST)
+      invoiceBody.amount = Math.round((bAmount / 1.13) * 100) / 100;
+    }
+    if (bDesc)   invoiceBody.description  = bDesc;
+    if (bNo)     invoiceBody.invoiceNo     = bNo;
     var gr = await fetch(SUPABASE_URL + '/functions/v1/generate-invoice', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON },
-      body: JSON.stringify({ client_code: code, month: ym })
+      body: JSON.stringify(invoiceBody)
     });
     var gres = await gr.json();
     if (gr.ok && !gres.error) {
@@ -2362,11 +2373,17 @@ async function openClientEditor(btn) {
           var code = window._editingClientCode || '';
           var rows = br.data.map(function(b) {
             var ym = (b.period ? b.period.substring(0,7) : (b.paid_at||b.created_at||'').substring(0,7));
-            var filePathHtml = b.file_path || (code + '/' + ym + '-invoice.html');
-            // PDF button: auto-generates if file not found
-            var dlBtn = ym
-              ? '<button class="btn-sm btn-ghost" style="padding:3px 8px;font-size:.7rem" data-bucket="invoices" data-path="' + filePathHtml + '" data-ym="' + ym + '" data-code="' + esc(code) + '" onclick="adminViewInvoice(this)">&#8659; PDF</button>'
-              : '';
+            var filePathHtml = b.file_path || '';
+            // PDF button: carries amount/desc for custom invoices; file_path for direct open
+            var dlBtn = '<button class="btn-sm btn-ghost" style="padding:3px 8px;font-size:.7rem"'
+              + ' data-bucket="invoices"'
+              + ' data-path="' + esc(filePathHtml) + '"'
+              + ' data-ym="' + esc(ym) + '"'
+              + ' data-code="' + esc(code) + '"'
+              + ' data-amount="' + (b.amount != null ? parseFloat(b.amount).toFixed(2) : '') + '"'
+              + ' data-desc="' + esc(b.description || '') + '"'
+              + ' data-invoice-no="' + esc(b.invoice_no || '') + '"'
+              + ' onclick="adminViewInvoice(this)">&#8659; PDF</button>';
             // Status: editable dropdown for manual updates
             var st = (b.status || 'pending').toLowerCase();
             var pillCls = st === 'paid' ? 'green' : st === 'failed' || st === 'overdue' ? 'red' : 'yellow';
