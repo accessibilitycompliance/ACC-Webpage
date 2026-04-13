@@ -1436,7 +1436,9 @@ function genClientCode() {
 
 function fmtDate(d) {
   if (!d) return '';
-  var dt = new Date(d);
+  // Append T00:00:00 for date-only strings to prevent UTC→local timezone day shift
+  var str = (typeof d === 'string' && d.length === 10) ? d + 'T00:00:00' : d;
+  var dt = new Date(str);
   return dt.toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' });
 }
 
@@ -2061,7 +2063,7 @@ function updateOverviewStats(clients) {
               return '<tr>' +
                 '<td>'+esc(cname)+'</td>' +
                 '<td>$'+parseFloat(b.amount||0).toFixed(2)+'</td>' +
-                '<td style="color:#8a9bbf;font-size:.8rem">'+fmtDate(b.paid_at||b.created_at)+'</td>' +
+                '<td style="color:#8a9bbf;font-size:.8rem">'+fmtDate(b.period||b.paid_at||b.created_at)+'</td>' +
                 '<td style="color:#8a9bbf;font-size:.8rem">'+esc(b.payment_method||'Stripe')+'</td>' +
                 '<td><span class="pill '+sc+'">'+esc(b.status||'pending')+'</span></td>' +
                 '</tr>';
