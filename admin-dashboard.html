@@ -2063,7 +2063,7 @@ function updateOverviewStats(clients) {
               return '<tr>' +
                 '<td>'+esc(cname)+'</td>' +
                 '<td>$'+parseFloat(b.amount||0).toFixed(2)+'</td>' +
-                '<td style="color:#8a9bbf;font-size:.8rem">'+fmtDate(b.period||b.paid_at||b.created_at)+'</td>' +
+                '<td style="color:#8a9bbf;font-size:.8rem">'+fmtDate(b.paid_at || b.created_at)+'</td>' +
                 '<td style="color:#8a9bbf;font-size:.8rem">'+esc(b.payment_method||'Stripe')+'</td>' +
                 '<td><span class="pill '+sc+'">'+esc(b.status||'pending')+'</span></td>' +
                 '</tr>';
@@ -2397,7 +2397,7 @@ async function openClientEditor(btn) {
               + '</select>'
               + (st === 'failed' && b.failure_reason ? '<br><span style="font-size:.65rem;color:#f05f5f">' + esc(b.failure_reason) + '</span>' : '');
             return '<tr>' +
-              '<td>' + fmtDate(b.paid_at||b.period||b.created_at) + '</td>' +
+              '<td>' + fmtDate(b.paid_at || b.created_at) + '</td>' +
               '<td>' + (b.amount != null ? '$' + parseFloat(b.amount).toFixed(2) : '—') + '</td>' +
               '<td>' + statusSel + '</td>' +
               '<td>' + dlBtn + '</td>' +
