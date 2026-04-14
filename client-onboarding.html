@@ -124,6 +124,37 @@
       <input class="finput" type="text" id="ob-card-name" placeholder="Jane Smith" autocomplete="cc-name"/>
     </div>
     <div class="fgroup">
+      <label>Billing Address</label>
+      <input class="finput" type="text" id="ob-billing-addr" placeholder="123 Main St" autocomplete="street-address"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="fgroup"><label>City</label>
+        <input class="finput" type="text" id="ob-billing-city" placeholder="Toronto" autocomplete="address-level2"/>
+      </div>
+      <div class="fgroup"><label>Province</label>
+        <select class="finput" id="ob-billing-province" autocomplete="address-level1">
+          <option value="">Select…</option>
+          <option value="AB">AB — Alberta</option>
+          <option value="BC">BC — British Columbia</option>
+          <option value="MB">MB — Manitoba</option>
+          <option value="NB">NB — New Brunswick</option>
+          <option value="NL">NL — Newfoundland</option>
+          <option value="NS">NS — Nova Scotia</option>
+          <option value="ON" selected>ON — Ontario</option>
+          <option value="PE">PE — PEI</option>
+          <option value="QC">QC — Quebec</option>
+          <option value="SK">SK — Saskatchewan</option>
+          <option value="NT">NT — Northwest Territories</option>
+          <option value="NU">NU — Nunavut</option>
+          <option value="YT">YT — Yukon</option>
+        </select>
+      </div>
+    </div>
+    <div class="fgroup">
+      <label>Postal Code</label>
+      <input class="finput" type="text" id="ob-billing-postal" placeholder="A1A 1A1" maxlength="7" autocomplete="postal-code" style="text-transform:uppercase"/>
+    </div>
+    <div class="fgroup">
       <label>Card Details</label>
       <div id="stripe-card-el"></div>
     </div>
@@ -148,11 +179,11 @@
     <span style="color:rgba(138,155,191,.3)">|</span>
 <button onclick="document.getElementById('ob-privacy-modal').style.display='flex'" style="background:none;border:none;color:rgba(138,155,191,.7);cursor:pointer;font-size:.72rem;text-decoration:underline;padding:0">Privacy Policy</button>
     <span style="color:rgba(138,155,191,.3)">|</span>
-<a href="mailto:partner@accessibilitycompliance.ca" style="color:rgba(138,155,191,.7);text-decoration:none">Contact Us</a>
+<a href="/cdn-cgi/l/email-protection#b4c4d5c6c0dad1c6f4d5d7d7d1c7c7ddd6ddd8ddc0cdd7dbd9c4d8ddd5dad7d19ad7d5" style="color:rgba(138,155,191,.7);text-decoration:none">Contact Us</a>
   </div>
 </footer>
 
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 var ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
 var SB_URL = 'https://wfyzvmfvlukawidowuym.supabase.co';
 var STRIPE_PK = 'pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ';
@@ -195,7 +226,7 @@ async function verifyEmail() {
   var btn = document.getElementById('btn-1');
   btn.disabled = true; btn.textContent = 'Checking…';
   try {
-    var r = await fetch(SB_URL + '/rest/v1/clients?email=eq.' + encodeURIComponent(email) + '&select=id,client_code,name,tier,billing_cycle,stripe_customer_id,stripe_subscription_id&limit=1', {
+    var r = await fetch(SB_URL + '/rest/v1/clients?email=eq.' + encodeURIComponent(email) + '&select=id,client_code,name,tier,billing_cycle,start_date,renewal_date,stripe_customer_id,stripe_subscription_id&limit=1', {
       headers: { 'apikey': ANON, 'Authorization': 'Bearer ' + ANON }
     });
     var rows = await r.json();
@@ -299,6 +330,12 @@ async function submitCard() {
   var cardName = (document.getElementById('ob-card-name')||{}).value.trim();
   hideErr(3);
   if (!cardName) { showErr(3, 'Please enter the cardholder name.'); return; }
+  var billingAddr = (document.getElementById('ob-billing-addr')||{}).value || '';
+  var billingCity = (document.getElementById('ob-billing-city')||{}).value || '';
+  var billingPostal = (document.getElementById('ob-billing-postal')||{}).value || '';
+  if (!billingAddr.trim()) { showErr(3, 'Please enter a billing address.'); return; }
+  if (!billingCity.trim()) { showErr(3, 'Please enter your city.'); return; }
+  if (!billingPostal.trim()) { showErr(3, 'Please enter your postal code.'); return; }
   var btn = document.getElementById('btn-3');
   btn.disabled = true; btn.textContent = 'Validating card…';
   try {
@@ -337,7 +374,12 @@ async function submitCard() {
         payment_method_id: pmId,
         price_id:          siData.priceId,
         customer_id:       siData.customerId,
-        billing_type:      'recurring'
+        billing_type:      'recurring',
+        start_date:        _client.start_date || null,
+        billing_addr:      (document.getElementById('ob-billing-addr')||{}).value || null,
+        billing_city:      (document.getElementById('ob-billing-city')||{}).value || null,
+        billing_province:  (document.getElementById('ob-billing-province')||{}).value || null,
+        billing_postal:    (document.getElementById('ob-billing-postal')||{}).value || null
       })
     });
     var actData = await actRes.json();
@@ -426,7 +468,7 @@ function esc(s) { var d=document.createElement('div'); d.textContent=String(s||'
     <h3>1. About This Policy</h3>
     <p>This Privacy Policy explains how Accessibility Compliance Canada Inc. collects, uses, discloses, and safeguards personal information in connection with our AODA compliance SaaS platform and our website at accessibilitycompliance.ca.</p>
     <p>We are subject to the <em>Personal Information Protection and Electronic Documents Act</em> (PIPEDA) and Canada&rsquo;s <em>Anti-Spam Legislation</em> (CASL). By using our Service, you consent to the practices described in this Policy.</p>
-    <p>Contact our Privacy Officer at: <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a></p>
+    <p>Contact our Privacy Officer at: <a href="/cdn-cgi/l/email-protection#0a7a6b787e646f784a6b69696f797963686366637e736965677a66636b64696f24696b" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="2d5d4c5f5943485f6d4c4e4e485e5e444f44414459544e42405d41444c434e48034e4c">[email&#160;protected]</span></a></p>
     <h3>2. Information We Collect</h3>
     <p><strong>Account and Contact:</strong></p>
     <ul>
@@ -485,7 +527,7 @@ function esc(s) { var d=document.createElement('div'); d.textContent=String(s||'
       <li><strong>Data Export:</strong> Receive your compliance documents in a portable format</li>
       <li><strong>Complaint:</strong> File a complaint with the Office of the Privacy Commissioner of Canada</li>
     </ul>
-    <p>To exercise any of these rights, email <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a>. We will respond within <strong>30 days</strong>.</p>
+    <p>To exercise any of these rights, email <a href="/cdn-cgi/l/email-protection#2959485b5d474c5b69484a4a4c5a5a404b4045405d504a464459454048474a4c074a48" style="color:#4f8ef7"><span class="__cf_email__" data-cfemail="73031201071d1601331210101600001a111a1f1a070a101c1e031f1a121d10165d1012">[email&#160;protected]</span></a>. We will respond within <strong>30 days</strong>.</p>
     <h3>8. Electronic Communications (CASL)</h3>
     <ul>
       <li><strong>Transactional messages</strong> (invoices, audit reports, account notices, security alerts) &mdash; sent in connection with your existing commercial relationship; do not require separate opt-in.</li>
@@ -505,14 +547,4 @@ function esc(s) { var d=document.createElement('div'); d.textContent=String(s||'
     <h3>11. Children&rsquo;s Privacy</h3>
     <p>Our Service is designed for businesses and is not directed to individuals under 18 years of age. We do not knowingly collect personal information from minors.</p>
     <h3>12. Changes to This Policy</h3>
-    <p>We may update this Policy periodically. We will notify you by email and post the revised Policy on this page with an updated &ldquo;Last Revised&rdquo; date. Continued use of the Service after the effective date constitutes acceptance of the revised Policy.</p>
-    <h3>13. Contact Us</h3>
-    <p><strong>Privacy Officer</strong><br>
-    Accessibility Compliance Canada Inc.<br>
-    Oakville, Ontario, Canada<br>
-    <a href="mailto:partner@accessibilitycompliance.ca" style="color:#4f8ef7">partner@accessibilitycompliance.ca</a><br>
-    <a href="https://accessibilitycompliance.ca" style="color:#4f8ef7">accessibilitycompliance.ca</a></p>
-  </div>
-</div>
-</body>
-</html>
+    <p>We may update this Policy periodically. We will notify you by email and post the revised Policy on this page with an updated &ldquo;Last Revised&rdquo; date. Continued use of th

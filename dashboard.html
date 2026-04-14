@@ -1899,7 +1899,9 @@ async function confirmCancel() {
     var cancelText = await cancelRes.text();
     var cancelData; try { cancelData = JSON.parse(cancelText); } catch(_) { cancelData = {}; }
     if (!cancelRes.ok || cancelData.error) {
-      throw new Error(cancelData.error || 'Cancel failed (HTTP ' + cancelRes.status + '): ' + cancelText.slice(0, 150));
+      var errMsg = cancelData.error || 'Cancel failed (HTTP ' + cancelRes.status + '): ' + cancelText.slice(0, 200);
+      alert('DEBUG — cancel error: ' + errMsg);
+      throw new Error(errMsg);
     }
 
     // 2. Cancel Stripe subscription at period end (non-blocking)
