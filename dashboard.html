@@ -1890,18 +1890,32 @@ async function confirmCancel() {
   var btn = document.querySelector('button[onclick="confirmCancel()"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
   try {
-    // 1. Mark cancelled — always route through edge function (service role bypasses RLS)
-    var cancelRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
-      body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
-    });
-    var cancelText = await cancelRes.text();
-    var cancelData; try { cancelData = JSON.parse(cancelText); } catch(_) { cancelData = {}; }
-    if (!cancelRes.ok || cancelData.error) {
-      var errMsg = cancelData.error || 'Cancel failed (HTTP ' + cancelRes.status + '): ' + cancelText.slice(0, 200);
-      alert('DEBUG — cancel error: ' + errMsg);
-      throw new Error(errMsg);
+    // 1. Mark cancelled — try direct JS client first (uses user's session JWT + RLS),
+    //    then fall back to edge function (service role) if that fails
+    var cancelOk = false;
+    var cancelErr = null;
+    try {
+      var directResult = await _sb_client.from('clients')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', _clientData.id);
+      // Verify it actually wrote
+      var verifyResult = await _sb_client.from('clients').select('status').eq('id', _clientData.id).single();
+      if (!directResult.error && !verifyResult.error && verifyResult.data && verifyResult.data.status === 'cancelled') {
+        cancelOk = true;
+      }
+    } catch(e) { cancelErr = e.message; }
+    // Edge function fallback
+    if (!cancelOk) {
+      var cancelRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
+        body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
+      });
+      var cancelText = await cancelRes.text();
+      var cancelData; try { cancelData = JSON.parse(cancelText); } catch(_) { cancelData = {}; }
+      if (!cancelRes.ok || cancelData.error) {
+        throw new Error(cancelData.error || 'Cancel failed (HTTP ' + cancelRes.status + '): ' + cancelText.slice(0, 200));
+      }
     }
 
     // 2. Cancel Stripe subscription at period end (non-blocking)
