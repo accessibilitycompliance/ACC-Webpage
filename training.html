@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+// ── ACC Environment Configuration ─────────────────────────────────────────
+// To switch environments: change ENV to 'dev' or 'prod'
+var ENV          = 'prod';
+var SUPABASE_URL  = ENV === 'dev' ? 'https://wjbmhsjjtjebbjazyyuw.supabase.co'  : 'https://wfyzvmfvlukawidowuym.supabase.co';
+var SUPABASE_ANON = ENV === 'dev' ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYm1oc2pqdGplYmJqYXp5eXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODUxMjgsImV4cCI6MjA5MzI2MTEyOH0.7iQq8Cdht1472iTQk1hB4-xvQUgLKPfTVY01ui9jN18' : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
+// Stripe publishable key — replace DEV key with your test pk_test_ key
+var STRIPE_PK = ENV === 'dev' ? 'pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ' : 'pk_live_51TAdyKKL0pQutwaM0t5JF3g27S7XRuEfin0ZJNJy9bKpC07KpskW0plwqRerhfHUwcBT64RDHYD0DxT5ffu5k55g00Ab8AV6Kp';
+// ──────────────────────────────────────────────────────────────────────────
+</script>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="color-scheme" content="dark"/>
@@ -198,8 +208,8 @@ html,body{background:#0a1628;color:#e8edf8;font-family:'Sora',sans-serif;min-hei
 <div class="save-toast" id="save-toast">&#10003; Training record saved to registry</div>
 
 <script>
-var SUPABASE_URL  = 'https://wfyzvmfvlukawidowuym.supabase.co';
-var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
+var SUPABASE_URL  = SUPABASE_URL;
+var SUPABASE_ANON = SUPABASE_ANON;
 var _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // 80% watched = completion trigger
