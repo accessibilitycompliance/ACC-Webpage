@@ -1,16 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script>
-// ── ACC Environment Configuration ─────────────────────────────────────────
-// To switch environments: change ENV to 'dev' or 'prod'
-var ENV          = 'prod';
-var SUPABASE_URL  = ENV === 'dev' ? 'https://wjbmhsjjtjebbjazyyuw.supabase.co'  : 'https://wfyzvmfvlukawidowuym.supabase.co';
-var SUPABASE_ANON = ENV === 'dev' ? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqYm1oc2pqdGplYmJqYXp5eXV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc2ODUxMjgsImV4cCI6MjA5MzI2MTEyOH0.7iQq8Cdht1472iTQk1hB4-xvQUgLKPfTVY01ui9jN18' : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M';
-// Stripe publishable key — replace DEV key with your test pk_test_ key
-var STRIPE_PK = ENV === 'dev' ? 'pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ' : 'pk_live_51TAdyKKL0pQutwaM0t5JF3g27S7XRuEfin0ZJNJy9bKpC07KpskW0plwqRerhfHUwcBT64RDHYD0DxT5ffu5k55g00Ab8AV6Kp';
-// ──────────────────────────────────────────────────────────────────────────
-</script>
 <meta charset="UTF-8"/>
 <script src="https://js.stripe.com/v3/"></script>
 <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
@@ -1901,7 +1891,7 @@ async function confirmCancel() {
   if (btn) { btn.disabled = true; btn.textContent = 'Cancelling…'; }
   try {
     // 1. Mark cancelled via edge function (service role bypasses RLS)
-    var cancelRes = await fetch('' + SUPABASE_URL + '/functions/v1/update-subscription', {
+    var cancelRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
       method: 'POST',
       headers: {'Content-Type':'application/json','apikey':'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M','Authorization':'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M'},
       body: JSON.stringify({ client_id: _clientData.id, action: 'mark_cancelled' })
@@ -1920,7 +1910,7 @@ async function confirmCancel() {
         // 2. Cancel Stripe subscription at period end (non-blocking)
     // cancel_at_period_end=true means client keeps access until renewal, then no charge
     if (_clientData.stripe_subscription_id) {
-      fetch('' + SUPABASE_URL + '/functions/v1/update-subscription', {
+      fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
         body: JSON.stringify({ client_id: _clientData.id, action: 'cancel_at_period_end' })
@@ -2149,7 +2139,7 @@ function initStripeCardUpdate() {
   });
   try {
     if (!_cardUpdateStripe) {
-      _cardUpdateStripe = Stripe(STRIPE_PK);
+      _cardUpdateStripe = Stripe('pk_test_51TAdyX3z0tL7YFm9rLapHmEDQsytfBpgMA91MNo3RER5HgVgIdRh8G0gjzzNTFL4olHl1M0F3B5sZbdxTjnBUFUV00w6ugJRbZ');
     }
     var style = { base: { color: '#e8edf8', fontFamily: 'system-ui, sans-serif', fontSize: '15px', '::placeholder': { color: 'rgba(138,155,191,.5)' } }, invalid: { color: '#f05f5f' } };
     var elems = _cardUpdateStripe.elements();
@@ -2187,7 +2177,7 @@ async function saveCard() {
 
   try {
     // Step 1: Get SetupIntent client_secret via update-payment-method
-    var siRes = await fetch('' + SUPABASE_URL + '/functions/v1/update-payment-method', {
+    var siRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-payment-method', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
       body: JSON.stringify({ client_id: _clientData.id, action: 'get_setup_intent' })
@@ -2209,7 +2199,7 @@ async function saveCard() {
 
     // Step 3: Attach to customer + subscription via edge function
     if (btn) btn.textContent = 'Saving…';
-    var updRes = await fetch('' + SUPABASE_URL + '/functions/v1/update-payment-method', {
+    var updRes = await fetch('https://wfyzvmfvlukawidowuym.supabase.co/functions/v1/update-payment-method', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M' },
       body: JSON.stringify({ client_id: _clientData.id, payment_method_id: paymentMethodId })
@@ -2276,7 +2266,7 @@ async function saveBillingAddress() {
 // ══════════════════════════════════════════════════════════
 
 var _sb_client = window.supabase.createClient(
-  SUPABASE_URL,
+  'https://wfyzvmfvlukawidowuym.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndmeXp2bWZ2bHVrYXdpZG93dXltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyODE3MDksImV4cCI6MjA4ODg1NzcwOX0.UeVjqQtu-eBryHWAnH8wZoX0QPJ1ZNcdRCcAaUbWT1M'
 );
 
